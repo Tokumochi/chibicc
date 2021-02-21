@@ -54,11 +54,23 @@ static void gen_expr(Node *node) {
     error("invalid expression");
 }
 
+static void gen_stmt(Node *node) {
+    if(node->kind == ND_EXPR_STMT) {
+        gen_expr(node->lhs);
+        return;
+    }
+
+    error("invalid statement");
+}
+
 void codegen(Node *node) {
     printf("define i32 @main() {\n");
 
-    gen_expr(node);
+    for(Node *n = node; n; n = n->next) {
+        node = n;
+        gen_stmt(n);
+    }
 
-    printf("    ret i32 %%%d\n", node->number);
+    printf("    ret i32 %%%d\n", node->lhs->number);
     printf("}\n");
 }
