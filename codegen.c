@@ -1,18 +1,37 @@
 #include "chibicc.h"
 
-static int var_number;
+static int var_number = 26;
 
 static void give_var_number(Node *node) {
     node->number = ++var_number;
 }
 
+static int get_offset(Node *node) {
+    return node->name - 'a' + 1;
+}
+
+// Generate code for a given node
 static void gen_expr(Node *node) {
-    if(node->kind == ND_NUM) {
+    switch(node->kind) {
+    case ND_NUM:
         give_var_number(node);
         printf("    %%s_%d = alloca i32, align 4\n", node->number);
         printf("    store i32 %d, i32* %%s_%d, align 4\n", node->val, node->number);
         printf("    %%%d = load i32, i32* %%s_%d, align 4\n", node->number, node->number);
         return;
+    case ND_VAR:
+        give_var_number(node);
+        printf("    %%%d = load i32, i32* %%%d, align 4\n", node->number, get_offset(node));
+        return;
+    case ND_ASSIGN:
+        if(node->lhs->kind == ND_VAR) {
+            gen_expr(node->rhs);
+            node->number = node->rhs->number;
+            printf("    store i32 %%%d, i32* %%%d, align 4\n", node->rhs->number, get_offset(node->lhs));
+            return;
+        }
+
+        error("not an lvalue");
     }
 
     gen_expr(node->lhs);
@@ -65,6 +84,11 @@ static void gen_stmt(Node *node) {
 
 void codegen(Node *node) {
     printf("define i32 @main() {\n");
+
+    for(int n = 1; n <= 26; n++) {
+        printf("    %%%d = alloca i32, align 4\n", n);
+        printf("    store i32 0, i32* %%%d, align 4\n", n);
+    }
 
     for(Node *n = node; n; n = n->next) {
         node = n;
