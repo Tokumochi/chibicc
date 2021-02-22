@@ -6,10 +6,6 @@ static void give_var_number(Node *node) {
     node->number = ++var_number;
 }
 
-static int get_offset(Node *node) {
-    return node->name - 'a' + 1;
-}
-
 // Generate code for a given node
 static void gen_expr(Node *node) {
     switch(node->kind) {
@@ -21,13 +17,13 @@ static void gen_expr(Node *node) {
         return;
     case ND_VAR:
         give_var_number(node);
-        printf("    %%%d = load i32, i32* %%%d, align 4\n", node->number, get_offset(node));
+        printf("    %%%d = load i32, i32* %%%d, align 4\n", node->number, node->var->offset);
         return;
     case ND_ASSIGN:
         if(node->lhs->kind == ND_VAR) {
             gen_expr(node->rhs);
             node->number = node->rhs->number;
-            printf("    store i32 %%%d, i32* %%%d, align 4\n", node->rhs->number, get_offset(node->lhs));
+            printf("    store i32 %%%d, i32* %%%d, align 4\n", node->rhs->number,  node->lhs->var->offset);
             return;
         }
 
@@ -82,19 +78,35 @@ static void gen_stmt(Node *node) {
     error("invalid statement");
 }
 
-void codegen(Node *node) {
+// Assign offsets to local variables.
+static void assign_lvar_offsets(Function *prog) {
+    int total = 0;
+    for(Obj *var = prog->locals; var; var = var->next) {
+        total++;
+        var->offset = total;
+    }
+    prog->total = total;
+}
+
+void codegen(Function *prog) {
+    assign_lvar_offsets(prog);
+
     printf("define i32 @main() {\n");
 
-    for(int n = 1; n <= 26; n++) {
+    var_number = prog->total;
+
+    for(int n = 1; n <= prog->total; n++) {
         printf("    %%%d = alloca i32, align 4\n", n);
         printf("    store i32 0, i32* %%%d, align 4\n", n);
     }
 
-    for(Node *n = node; n; n = n->next) {
-        node = n;
+    Node *main;
+
+    for(Node *n = prog->body; n; n = n->next) {
+        main = n;
         gen_stmt(n);
     }
 
-    printf("    ret i32 %%%d\n", node->lhs->number);
+    printf("    ret i32 %%%d\n", main->lhs->number);
     printf("}\n");
 }
