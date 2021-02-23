@@ -69,10 +69,16 @@ static void gen_expr(Node *node) {
     error("invalid expression");
 }
 
-static void gen_stmt(Node *node) {
-    if(node->kind == ND_EXPR_STMT) {
+static bool gen_stmt(Node *node) {
+    switch(node->kind) {
+    case ND_RETURN:
         gen_expr(node->lhs);
-        return;
+        printf("    store i32 %%%d, i32* %%s_ret, align 4\n", node->lhs->number);
+        printf("    br label %%.L.return\n");
+        return true;
+    case ND_EXPR_STMT: 
+        gen_expr(node->lhs);
+        return false;
     }
 
     error("invalid statement");
@@ -95,18 +101,19 @@ void codegen(Function *prog) {
 
     var_number = prog->total;
 
+    printf("    %%s_ret = alloca i32, align 4\n");
+    printf("    store i32 0, i32* %%s_ret, align 4\n");
+
     for(int n = 1; n <= prog->total; n++) {
         printf("    %%%d = alloca i32, align 4\n", n);
         printf("    store i32 0, i32* %%%d, align 4\n", n);
     }
 
-    Node *main;
+    for(Node *n = prog->body; n; n = n->next)
+        if(gen_stmt(n)) break;
 
-    for(Node *n = prog->body; n; n = n->next) {
-        main = n;
-        gen_stmt(n);
-    }
-
-    printf("    ret i32 %%%d\n", main->lhs->number);
+    printf(".L.return:\n");
+    printf("    %%ret = load i32, i32* %%s_ret, align 4\n");
+    printf("    ret i32 %%ret\n");
     printf("}\n");
 }
