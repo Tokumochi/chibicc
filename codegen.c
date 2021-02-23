@@ -71,6 +71,10 @@ static void gen_expr(Node *node) {
 
 static bool gen_stmt(Node *node) {
     switch(node->kind) {
+    case ND_BLOCK:
+        for(Node *n = node->body; n; n = n->next)
+            if(gen_stmt(n)) return true;
+        return false;
     case ND_RETURN:
         gen_expr(node->lhs);
         printf("    store i32 %%%d, i32* %%s_ret, align 4\n", node->lhs->number);
@@ -109,8 +113,7 @@ void codegen(Function *prog) {
         printf("    store i32 0, i32* %%%d, align 4\n", n);
     }
 
-    for(Node *n = prog->body; n; n = n->next)
-        if(gen_stmt(n)) break;
+    gen_stmt(prog->body);
 
     printf(".L.return:\n");
     printf("    %%ret = load i32, i32* %%s_ret, align 4\n");
