@@ -6,6 +6,11 @@ static void give_var_number(Node *node) {
     node->number = ++var_number;
 }
 
+static int count(void) {
+    static int i = 1;
+    return i++;
+}
+
 // Generate code for a given node
 static void gen_expr(Node *node) {
     switch(node->kind) {
@@ -71,6 +76,24 @@ static void gen_expr(Node *node) {
 
 static bool gen_stmt(Node *node) {
     switch(node->kind) {
+    case ND_IF: {
+        int c = count();
+        gen_expr(node->cond);
+        give_var_number(node);
+        printf("    %%%d = icmp eq i32 0, %%%d\n", node->number, node->cond->number);
+        if(node->els) printf("    br i1 %%%d, label %%.L.else.%d, label %%.L.then.%d\n", node->number, c, c);
+        else          printf("    br i1 %%%d, label %%.L.end.%d, label %%.L.then.%d\n", node->number, c, c);
+        printf(".L.then.%d:\n", c);
+        if(!gen_stmt(node->then))
+            printf("    br label %%.L.end.%d\n", c);
+        if(node->els) {
+            printf(".L.else.%d:\n", c);
+            if(!gen_stmt(node->els))
+                printf("    br label %%.L.end.%d\n", c);
+        }
+        printf(".L.end.%d:\n", c);
+        return false;
+    }
     case ND_BLOCK:
         for(Node *n = node->body; n; n = n->next)
             if(gen_stmt(n)) return true;
@@ -113,7 +136,8 @@ void codegen(Function *prog) {
         printf("    store i32 0, i32* %%%d, align 4\n", n);
     }
 
-    gen_stmt(prog->body);
+    if(!gen_stmt(prog->body))
+        printf("    br label %%.L.return\n");
 
     printf(".L.return:\n");
     printf("    %%ret = load i32, i32* %%s_ret, align 4\n");
