@@ -81,8 +81,10 @@ static bool gen_stmt(Node *node) {
         gen_expr(node->cond);
         give_var_number(node);
         printf("    %%%d = icmp eq i32 0, %%%d\n", node->number, node->cond->number);
-        if(node->els) printf("    br i1 %%%d, label %%.L.else.%d, label %%.L.then.%d\n", node->number, c, c);
-        else          printf("    br i1 %%%d, label %%.L.end.%d, label %%.L.then.%d\n", node->number, c, c);
+        if(node->els)
+            printf("    br i1 %%%d, label %%.L.else.%d, label %%.L.then.%d\n", node->number, c, c);
+        else
+            printf("    br i1 %%%d, label %%.L.end.%d, label %%.L.then.%d\n", node->number, c, c);
         printf(".L.then.%d:\n", c);
         if(!gen_stmt(node->then))
             printf("    br label %%.L.end.%d\n", c);
@@ -90,6 +92,30 @@ static bool gen_stmt(Node *node) {
             printf(".L.else.%d:\n", c);
             if(!gen_stmt(node->els))
                 printf("    br label %%.L.end.%d\n", c);
+        }
+        printf(".L.end.%d:\n", c);
+        return false;
+    }
+    case ND_FOR: {
+        int c = count();
+        gen_stmt(node->init);
+        if(node->cond) {
+            printf("    br label %%.L.begin.%d\n", c);
+            printf(".L.begin.%d:\n", c);
+            gen_expr(node->cond);
+            give_var_number(node);
+            printf("    %%%d = icmp eq i32 0, %%%d\n", node->number, node->cond->number);
+            printf("    br i1 %%%d, label %%.L.end.%d, label %%.L.then.%d\n", node->number, c, c);
+        } else
+            printf("    br label %%.L.then.%d\n", c);
+        printf(".L.then.%d:\n", c);
+        if(!gen_stmt(node->then)) {
+            if(node->inc)
+                gen_expr(node->inc);
+            if(node->cond)
+                printf("    br label %%.L.begin.%d\n", c);
+            else
+                printf("    br label %%.L.then.%d\n", c);
         }
         printf(".L.end.%d:\n", c);
         return false;
