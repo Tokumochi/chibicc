@@ -98,7 +98,8 @@ static bool gen_stmt(Node *node) {
     }
     case ND_FOR: {
         int c = count();
-        gen_stmt(node->init);
+        if(node->init)
+            gen_stmt(node->init);
         if(node->cond) {
             printf("    br label %%.L.begin.%d\n", c);
             printf(".L.begin.%d:\n", c);

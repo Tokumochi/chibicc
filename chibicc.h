@@ -72,7 +72,7 @@ typedef enum {
     ND_BLOCK,     // { ... }
     ND_RETURN,    // "return"
     ND_IF,        // "if"
-    ND_FOR,       // "for"
+    ND_FOR,       // "for" or "while"
     ND_EXPR_STMT, // Expression statement
     ND_VAR,       // Variable
     ND_NUM,       // Integer
@@ -86,7 +86,7 @@ struct Node {
     Node *lhs;     // Left-hand side
     Node *rhs;     // Right-hand side
 
-    // "if" of "for" statement
+    // "if" or "for" statement
     Node *cond;
     Node *then;
     Node *els;
