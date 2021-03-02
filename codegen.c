@@ -49,18 +49,18 @@ static void gen_expr(Node *node) {
     switch(node->kind) {
     case ND_NUM:
         give_var_number(node);
-        printf("    %%s_%d = alloca i32, align 8\n", node->number);
-        printf("    store i32 %d, i32* %%s_%d, align 8\n", node->val, node->number);
-        printf("    %%%d = load i32, i32* %%s_%d, align 8\n", node->number, node->number);
+        printf("    %%s_%d = alloca i32, align 4\n", node->number);
+        printf("    store i32 %d, i32* %%s_%d, align 4\n", node->val, node->number);
+        printf("    %%%d = load i32, i32* %%s_%d, align 4\n", node->number, node->number);
         return;
     case ND_VAR:
         give_var_number(node);
-        printf("    %%%d = load i32%s, i32%s %%%d, align 8\n", node->number, gen_pointer(c), gen_pointer(c + 1), node->var->offset);
+        printf("    %%%d = load i32%s, i32%s %%%d, align 4\n", node->number, gen_pointer(c), gen_pointer(c + 1), node->var->offset);
         return;
     case ND_DEREF:
         gen_expr(node->lhs);
         give_var_number(node);
-        printf("    %%%d = load i32%s, i32%s %%%d, align 8\n", node->number, gen_pointer(c), gen_pointer(c + 1), node->lhs->number);
+        printf("    %%%d = load i32%s, i32%s %%%d, align 4\n", node->number, gen_pointer(c), gen_pointer(c + 1), node->lhs->number);
         return;
     case ND_ADDR:
         if(node->lhs->kind != ND_VAR)
@@ -71,7 +71,7 @@ static void gen_expr(Node *node) {
         gen_addr(node->lhs);
         gen_expr(node->rhs);
         node->number = node->rhs->number;
-        printf("    store i32%s %%%d, i32%s %%%d, align 8\n", gen_pointer(c), node->rhs->number, gen_pointer(c + 1), node->lhs->number);
+        printf("    store i32%s %%%d, i32%s %%%d, align 4\n", gen_pointer(c), node->rhs->number, gen_pointer(c + 1), node->lhs->number);
         return;
     }
 
@@ -167,7 +167,7 @@ static bool gen_stmt(Node *node) {
         return false;
     case ND_RETURN:
         gen_expr(node->lhs);
-        printf("    store i32 %%%d, i32* %%s_ret, align 8\n", node->lhs->number);
+        printf("    store i32 %%%d, i32* %%s_ret, align 4\n", node->lhs->number);
         printf("    br label %%.L.return\n");
         return true;
     case ND_EXPR_STMT: 
@@ -195,19 +195,19 @@ void codegen(Function *prog) {
 
     var_number = prog->total;
 
-    printf("    %%s_ret = alloca i32, align 8\n");
-    printf("    store i32 0, i32* %%s_ret, align 8\n");
+    printf("    %%s_ret = alloca i32, align 4\n");
+    printf("    store i32 0, i32* %%s_ret, align 4\n");
 
     for(Obj *var = prog->locals; var; var = var->next) {
         int c = pointer_count(var->ty);
-        printf("    %%%d = alloca i32%s, align 8\n", var->offset, gen_pointer(c));
+        printf("    %%%d = alloca i32%s, align 4\n", var->offset, gen_pointer(c));
     }
 
     if(!gen_stmt(prog->body))
         printf("    br label %%.L.return\n");
 
     printf(".L.return:\n");
-    printf("    %%ret = load i32, i32* %%s_ret, align 8\n");
+    printf("    %%ret = load i32, i32* %%s_ret, align 4\n");
     printf("    ret i32 %%ret\n");
     printf("}\n");
 }
