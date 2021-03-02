@@ -71,6 +71,9 @@ assert 3 '{ for(;;) {return 3;} return 5; }'
 
 assert 10 '{ int i=0; while(i<10) { i = i+1; } return i; }'
 
+assert 3 '{ int x=3; return *&x; }'
+assert 3 '{ int x=3; int *y=&x; int **z=&y; return **z; }'
+assert 5 '{ int x=3; int *y=&x; *y=5; return x; }'
 assert 8 '{ int x, y; x=3; y=5; return x+y; }'
 assert 8 '{ int x=3, y=5; return x+y; }'
 

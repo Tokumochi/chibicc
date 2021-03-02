@@ -2,6 +2,8 @@
 
 static int var_number = 26;
 
+static void gen_expr(Node *node);
+
 static void give_var_number(Node *node) {
     node->number = ++var_number;
 }
@@ -11,28 +13,66 @@ static int count(void) {
     return i++;
 }
 
+static int pointer_count(Type *ty) {
+    if(ty->kind == TY_INT) return 0;
+    return pointer_count(ty->base) + 1;
+}
+
+static char* gen_pointer(int times) {
+    char *str = calloc(times, sizeof(char));
+    for(int i = 0; i < times; i++)
+        str[i] = '*';
+    return str;
+}
+
+static void gen_addr(Node *node) {
+    int c = pointer_count(node->ty);
+
+    switch(node->kind) {
+    case ND_VAR:
+        node->number = node->var->offset;
+        return;
+    case ND_DEREF:
+        gen_expr(node->lhs);
+        node->number = node->lhs->number;
+        return;
+    }
+
+    error_tok(node->tok, "not an lvalue");
+}
+
 // Generate code for a given node
 static void gen_expr(Node *node) {
+
+    int c = pointer_count(node->ty);
+
     switch(node->kind) {
     case ND_NUM:
         give_var_number(node);
-        printf("    %%s_%d = alloca i32, align 4\n", node->number);
-        printf("    store i32 %d, i32* %%s_%d, align 4\n", node->val, node->number);
-        printf("    %%%d = load i32, i32* %%s_%d, align 4\n", node->number, node->number);
+        printf("    %%s_%d = alloca i32, align 8\n", node->number);
+        printf("    store i32 %d, i32* %%s_%d, align 8\n", node->val, node->number);
+        printf("    %%%d = load i32, i32* %%s_%d, align 8\n", node->number, node->number);
         return;
     case ND_VAR:
         give_var_number(node);
-        printf("    %%%d = load i32, i32* %%%d, align 4\n", node->number, node->var->offset);
+        printf("    %%%d = load i32%s, i32%s %%%d, align 8\n", node->number, gen_pointer(c), gen_pointer(c + 1), node->var->offset);
+        return;
+    case ND_DEREF:
+        gen_expr(node->lhs);
+        give_var_number(node);
+        printf("    %%%d = load i32%s, i32%s %%%d, align 8\n", node->number, gen_pointer(c), gen_pointer(c + 1), node->lhs->number);
+        return;
+    case ND_ADDR:
+        if(node->lhs->kind != ND_VAR)
+            error_tok(node->tok, "not an lvalue");
+        node->number = node->lhs->var->offset;
         return;
     case ND_ASSIGN:
-        if(node->lhs->kind == ND_VAR) {
-            gen_expr(node->rhs);
-            node->number = node->rhs->number;
-            printf("    store i32 %%%d, i32* %%%d, align 4\n", node->rhs->number,  node->lhs->var->offset);
-            return;
-        }
-
-        error_tok(node->tok, "not an lvalue");
+        gen_addr(node->lhs);
+        gen_expr(node->rhs);
+        node->number = node->rhs->number;
+        printf("    store i32%s %%%d, i32%s %%%d, align 8\n", gen_pointer(c), node->rhs->number, gen_pointer(c + 1), node->lhs->number);
+        return;
     }
 
     gen_expr(node->lhs);
@@ -127,7 +167,7 @@ static bool gen_stmt(Node *node) {
         return false;
     case ND_RETURN:
         gen_expr(node->lhs);
-        printf("    store i32 %%%d, i32* %%s_ret, align 4\n", node->lhs->number);
+        printf("    store i32 %%%d, i32* %%s_ret, align 8\n", node->lhs->number);
         printf("    br label %%.L.return\n");
         return true;
     case ND_EXPR_STMT: 
@@ -155,19 +195,19 @@ void codegen(Function *prog) {
 
     var_number = prog->total;
 
-    printf("    %%s_ret = alloca i32, align 4\n");
-    printf("    store i32 0, i32* %%s_ret, align 4\n");
+    printf("    %%s_ret = alloca i32, align 8\n");
+    printf("    store i32 0, i32* %%s_ret, align 8\n");
 
-    for(int n = 1; n <= prog->total; n++) {
-        printf("    %%%d = alloca i32, align 4\n", n);
-        printf("    store i32 0, i32* %%%d, align 4\n", n);
+    for(Obj *var = prog->locals; var; var = var->next) {
+        int c = pointer_count(var->ty);
+        printf("    %%%d = alloca i32%s, align 8\n", var->offset, gen_pointer(c));
     }
 
     if(!gen_stmt(prog->body))
         printf("    br label %%.L.return\n");
 
     printf(".L.return:\n");
-    printf("    %%ret = load i32, i32* %%s_ret, align 4\n");
+    printf("    %%ret = load i32, i32* %%s_ret, align 8\n");
     printf("    ret i32 %%ret\n");
     printf("}\n");
 }
