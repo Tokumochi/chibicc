@@ -1,6 +1,7 @@
 #include "chibicc.h"
 
-static int var_number = 26;
+static int var_number;
+static int ret_offset;
 
 static void gen_expr(Node *node);
 
@@ -74,8 +75,18 @@ static void gen_expr(Node *node) {
         printf("    store i32%s %%%d, i32%s %%%d, align 4\n", gen_pointer(c), node->rhs->number, gen_pointer(c + 1), node->lhs->number);
         return;
     case ND_FUNCALL:
+        for(Node *arg = node->args; arg; arg = arg->next)
+            gen_expr(arg);
+        
         give_var_number(node);
-        printf("    %%%d = call i32 @%s()\n", node->number, node->funcname);
+        printf("    %%%d = call i32 @%s(", node->number, node->funcname);
+
+        for(Node *arg = node->args; arg; arg = arg->next) {
+            if(arg != node->args)
+                printf(", ");
+            printf("i32 %%%d", arg->number);
+        }
+        printf(")\n");
         return;
     }
 
@@ -171,7 +182,7 @@ static bool gen_stmt(Node *node) {
         return false;
     case ND_RETURN:
         gen_expr(node->lhs);
-        printf("    store i32 %%%d, i32* %%1, align 4\n", node->lhs->number);
+        printf("    store i32 %%%d, i32* %%%d, align 4\n", node->lhs->number, ret_offset);
         printf("    br label %%.L.return\n");
         return true;
     case ND_EXPR_STMT: 
@@ -185,11 +196,13 @@ static bool gen_stmt(Node *node) {
 // Assign offsets to local variables.
 static void assign_lvar_offsets(Function *prog) {
     for(Function *fn = prog; fn; fn = fn->next) {
-        int offset = 1;
-        for(Obj *var = fn->locals; var; var = var->next) {
+        int offset = 0;
+        for(Obj *var = fn->params; var; var = var->next)
             offset++;
-            var->offset = offset;
-        }
+        fn->ret_offset = ++offset;
+
+        for(Obj *var = fn->locals; var; var = var->next)
+            var->offset = ++offset;
         fn->offset = offset;
     }
 }
@@ -198,23 +211,36 @@ void codegen(Function *prog) {
     assign_lvar_offsets(prog);
 
     for(Function *fn = prog; fn; fn = fn->next) {
-        printf("define i32 @%s() {\n", fn->name);
-
         var_number = fn->offset;
+        ret_offset = fn->ret_offset;
 
-        printf("    %%1 = alloca i32, align 4\n");
-        printf("    store i32 0, i32* %%1, align 4\n");
+        printf("define i32 @%s(", fn->name);
+        
+        for(int i = 0; i < ret_offset - 1; i++) {
+            if(i != 0)
+                printf(", ");
+            printf("i32 %%%d", i);
+        }
+        printf(") {\n");
+
+        printf("    %%%d = alloca i32, align 4\n", ret_offset);
+        printf("    store i32 0, i32* %%%d, align 4\n", ret_offset);
 
         for(Obj *var = fn->locals; var; var = var->next) {
             int c = pointer_count(var->ty);
             printf("    %%%d = alloca i32%s, align 4\n", var->offset, gen_pointer(c));
         }
 
+        // Store the arguments to the vars
+        int i = 0;
+        for(Obj *var = fn->params; var; var = var->next)
+            printf("    store i32 %%%d, i32* %%%d, align 4\n", i++, var->offset);
+
         if(!gen_stmt(fn->body))
             printf("    br label %%.L.return\n");
 
         printf(".L.return:\n");
-        printf("    %%%d = load i32, i32* %%1, align 4\n", ++var_number);
+        printf("    %%%d = load i32, i32* %%%d, align 4\n", ++var_number, ret_offset);
         printf("    ret i32 %%%d\n", var_number);
         printf("}\n");
     }
