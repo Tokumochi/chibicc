@@ -56,9 +56,11 @@ struct Obj {
 // Function
 typedef struct Function Function;
 struct Function {
+    Function *next;
+    char *name;
     Node *body;
     Obj *locals;
-    int total;
+    int offset;
 };
 
 // AST node
@@ -74,10 +76,11 @@ typedef enum {
     ND_ASSIGN,    // =
     ND_ADDR,      // unary &
     ND_DEREF,     // unary *
-    ND_BLOCK,     // { ... }
     ND_RETURN,    // "return"
     ND_IF,        // "if"
     ND_FOR,       // "for" or "while"
+    ND_BLOCK,     // { ... }
+    ND_FUNCALL,   // Function call
     ND_EXPR_STMT, // Expression statement
     ND_VAR,       // Variable
     ND_NUM,       // Integer
@@ -103,6 +106,9 @@ struct Node {
     // Block
     Node *body;
 
+    // Function call
+    char *funcname;
+
     Obj *var;      // Used if kind == ND_VAR
     int val;       // Used if kind == ND_NUM
 
@@ -119,6 +125,7 @@ Function *parse(Token *tok);
 typedef enum {
     TY_INT,
     TY_PTR,
+    TY_FUNC,
 } TypeKind;
 
 struct Type {
@@ -129,12 +136,16 @@ struct Type {
 
     // Declaration
     Token *name;
+
+    // Function type
+    Type *return_ty;
 };
 
 extern Type *ty_int;
 
 bool is_integer(Type *ty);
 Type *pointer_to(Type *base);
+Type *func_type(Type *return_ty);
 void add_type(Node *node);
 
 //
