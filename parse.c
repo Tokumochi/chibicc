@@ -73,34 +73,49 @@ static char *get_ident(Token *tok) {
     return strndup(tok->loc, tok->len);
 }
 
+static int get_number(Token *tok) {
+    if(tok->kind != TK_NUM)
+        error_tok(tok, "expected a number");
+    return tok->val;
+}
+
 // declspec = "int"
 static Type *declspec(Token **rest, Token *tok) {
     *rest = skip(tok, "int");
     return ty_int;
 }
 
-// type-suffix = ("(" func-params? ")")?
-// func-params = param ("," param)*
+// func-params = (param ("," param)*)? ")"
 // param       = declspec declarator
+static Type *func_params(Token **rest, Token *tok, Type *ty) {
+    Type head = {};
+    Type *cur = &head;
+
+    while(!equal(tok, ")")) {
+        if(cur != &head)
+            tok = skip(tok, ",");
+        Type *basety = declspec(&tok, tok);
+        Type *ty = declarator(&tok, tok, basety);
+        cur = cur->next = copy_type(ty);
+    }
+
+    ty = func_type(ty);
+    ty->params = head.next;
+    *rest = tok->next;
+    return ty;
+}
+
+// type-suffix = ("(" func-params
+//             | "[" num "]"
+//             | ε
 static Type *type_suffix(Token **rest, Token *tok, Type *ty) {
-    if(equal(tok, "(")) {
-        tok = tok->next;
-
-        Type head = {};
-        Type *cur = &head;
-
-        while(!equal(tok, ")")) {
-            if(cur != &head)
-                tok = skip(tok, ",");
-            Type *basety = declspec(&tok, tok);
-            Type *ty = declarator(&tok, tok, basety);
-            cur = cur->next = copy_type(ty);
-        }
-
-        ty = func_type(ty);
-        ty->params = head.next;
-        *rest = tok->next;
-        return ty;
+    if(equal(tok, "("))
+        return func_params(rest, tok->next, ty);
+    
+    if(equal(tok, "[")) {
+        int sz = get_number(tok->next);
+        *rest = skip(tok->next->next, "]");
+        return array_of(ty, sz);
     }
 
     *rest = tok;

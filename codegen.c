@@ -42,9 +42,23 @@ static void gen_addr(Node *node) {
     error_tok(node->tok, "not an lvalue");
 }
 
+static void load(Node *node, int load_num) {
+    int c = pointer_count(node->ty);
+    give_var_number(node);
+    if(node->ty->kind == TY_ARRAY) {
+        printf("    %%%d = getelementptr inbounds [%d x i32], [%d x i32]* %%%d, i64 0, i64 0\n", node->number, node->ty->array_len, node->ty->array_len, load_num);
+        return;
+    }
+    printf("    %%%d = load i32%s, i32%s %%%d, align 4\n", node->number, gen_pointer(c), gen_pointer(c + 1), load_num);
+}
+
+static void store(Node *node) {
+    int c = pointer_count(node->ty);
+    printf("    store i32%s %%%d, i32%s %%%d, align 4\n", gen_pointer(c), node->rhs->number, gen_pointer(c + 1), node->lhs->number);
+}
+
 // Generate code for a given node
 static void gen_expr(Node *node) {
-
     int c = pointer_count(node->ty);
 
     switch(node->kind) {
@@ -55,13 +69,11 @@ static void gen_expr(Node *node) {
         printf("    %%%d = load i32, i32* %%s_%d, align 4\n", node->number, node->number);
         return;
     case ND_VAR:
-        give_var_number(node);
-        printf("    %%%d = load i32%s, i32%s %%%d, align 4\n", node->number, gen_pointer(c), gen_pointer(c + 1), node->var->offset);
+        load(node, node->var->offset);
         return;
     case ND_DEREF:
         gen_expr(node->lhs);
-        give_var_number(node);
-        printf("    %%%d = load i32%s, i32%s %%%d, align 4\n", node->number, gen_pointer(c), gen_pointer(c + 1), node->lhs->number);
+        load(node, node->lhs->number);
         return;
     case ND_ADDR:
         if(node->lhs->kind != ND_VAR)
@@ -72,7 +84,7 @@ static void gen_expr(Node *node) {
         gen_addr(node->lhs);
         gen_expr(node->rhs);
         node->number = node->rhs->number;
-        printf("    store i32%s %%%d, i32%s %%%d, align 4\n", gen_pointer(c), node->rhs->number, gen_pointer(c + 1), node->lhs->number);
+        store(node);
         return;
     case ND_FUNCALL:
         for(Node *arg = node->args; arg; arg = arg->next)
@@ -227,6 +239,10 @@ void codegen(Function *prog) {
         printf("    store i32 0, i32* %%%d, align 4\n", ret_offset);
 
         for(Obj *var = fn->locals; var; var = var->next) {
+            if(var->ty->kind == TY_ARRAY) {
+                printf("    %%%d = alloca [%d x i32], align 4\n", var->offset, var->ty->array_len);
+                continue;
+            }
             int c = pointer_count(var->ty);
             printf("    %%%d = alloca i32%s, align 4\n", var->offset, gen_pointer(c));
         }
