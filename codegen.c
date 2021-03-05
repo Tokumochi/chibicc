@@ -45,10 +45,6 @@ static void gen_addr(Node *node) {
 static void load(Node *node, int load_num) {
     int c = pointer_count(node->ty);
     give_var_number(node);
-    if(node->ty->kind == TY_ARRAY) {
-        printf("    %%%d = getelementptr inbounds [%d x i32], [%d x i32]* %%%d, i64 0, i64 0\n", node->number, node->ty->array_len, node->ty->array_len, load_num);
-        return;
-    }
     printf("    %%%d = load i32%s, i32%s %%%d, align 4\n", node->number, gen_pointer(c), gen_pointer(c + 1), load_num);
 }
 
@@ -85,6 +81,13 @@ static void gen_expr(Node *node) {
         gen_expr(node->rhs);
         node->number = node->rhs->number;
         store(node);
+        return;
+    case ND_GETP:
+        gen_expr(node->rhs);
+        give_var_number(node->rhs);
+        printf("    %%%d = sext i32 %%%d to i64\n", node->rhs->number, node->rhs->number - 1);
+        give_var_number(node);
+        printf("    %%%d = getelementptr inbounds [%d x i32], [%d x i32]* %%%d, i64 0, i64 %%%d\n", node->number, node->lhs->ty->array_len, node->lhs->ty->array_len, node->lhs->var->offset, node->rhs->number);
         return;
     case ND_FUNCALL:
         for(Node *arg = node->args; arg; arg = arg->next)

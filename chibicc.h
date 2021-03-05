@@ -79,6 +79,7 @@ typedef enum {
     ND_ASSIGN,    // =
     ND_ADDR,      // unary &
     ND_DEREF,     // unary *
+    ND_GETP,      // Get the pointer
     ND_RETURN,    // "return"
     ND_IF,        // "if"
     ND_FOR,       // "for" or "while"
