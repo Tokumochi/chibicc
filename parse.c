@@ -107,7 +107,7 @@ static Type *func_params(Token **rest, Token *tok, Type *ty) {
 }
 
 // type-suffix = ("(" func-params
-//             | "[" num "]"
+//             | "[" num "]" type-suffix
 //             | ε
 static Type *type_suffix(Token **rest, Token *tok, Type *ty) {
     if(equal(tok, "("))
@@ -115,7 +115,8 @@ static Type *type_suffix(Token **rest, Token *tok, Type *ty) {
     
     if(equal(tok, "[")) {
         int sz = get_number(tok->next);
-        *rest = skip(tok->next->next, "]");
+        tok = skip(tok->next->next, "]");
+        ty = type_suffix(rest, tok, ty);
         return array_of(ty, sz);
     }
 
@@ -416,12 +417,17 @@ static Node *postfix(Token **rest, Token *tok) {
     add_type(node);
 
     if(node->kind == ND_VAR && node->ty->kind == TY_ARRAY) {
-        if(equal(tok, "[")) {
+        while(equal(tok, "[")) {
             Token *start = tok;
             Node *idx = expr(&tok, tok->next);
             tok = skip(tok, "]");
-            node = new_unary(ND_DEREF, new_binary(ND_GETP, node, idx, start), start);
-        } else 
+            node = new_binary(ND_GETP, node, idx, start);
+        }
+        add_type(node);
+
+        if(node->ty->kind != TY_ARRAY)
+            node = new_unary(ND_DEREF, node, tok);
+        else
             node = new_binary(ND_GETP, node, new_num(0, node->tok), node->tok);
     }
     *rest = tok;

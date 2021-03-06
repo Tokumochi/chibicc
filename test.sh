@@ -93,4 +93,11 @@ assert 3 'int main() { int x[3]; *x=3; x[1]=4; x[2]=5; return x[0]; }'
 assert 4 'int main() { int x[3]; *x=3; x[1]=4; x[2]=5; return x[1]; }'
 assert 5 'int main() { int x[3]; *x=3; x[1]=4; x[2]=5; return x[2]; }'
 
+assert 3 'int main() { int x[2][3]; int *y=x[0]; *y=3; return x[0][0]; }'
+assert 5 'int main() { int x[2][3]; int *y=x[1]; *y=5; return x[1][0]; }'
+assert 6 'int main() { int x[2][3]; x[0][1]=6; int y=x[0][1]; return y; }'
+assert 7 'int main() { int x[2][3]; x[0][2]=7; int y=x[0][2]; return y; }'
+assert 8 'int main() { int x[2][3]; x[1][1]=8; int y=x[1][1]; return y; }'
+assert 9 'int main() { int x[2][3]; x[1][2]=9; int y=x[1][2]; return y; }'
+
 echo OK

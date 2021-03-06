@@ -26,6 +26,18 @@ static char* gen_pointer(int times) {
     return str;
 }
 
+static void gen_array(Type *ty) {
+    int i = 0;
+    for(; ty->kind == TY_ARRAY; ty = ty->base) {
+        printf("[%d x ", ty->array_len);
+        i++;
+    }
+    printf("i32");
+
+    for(; i > 0; i--)
+        printf("]");
+}
+
 static void gen_addr(Node *node) {
     int c = pointer_count(node->ty);
 
@@ -83,11 +95,19 @@ static void gen_expr(Node *node) {
         store(node);
         return;
     case ND_GETP:
+        if(node->lhs->kind == ND_VAR)
+            node->lhs->number = node->lhs->var->offset;
+        else
+            gen_expr(node->lhs);
         gen_expr(node->rhs);
         give_var_number(node->rhs);
         printf("    %%%d = sext i32 %%%d to i64\n", node->rhs->number, node->rhs->number - 1);
         give_var_number(node);
-        printf("    %%%d = getelementptr inbounds [%d x i32], [%d x i32]* %%%d, i64 0, i64 %%%d\n", node->number, node->lhs->ty->array_len, node->lhs->ty->array_len, node->lhs->var->offset, node->rhs->number);
+        printf("    %%%d = getelementptr inbounds ", node->number);
+        gen_array(node->lhs->ty);
+        printf(", ");
+        gen_array(node->lhs->ty);
+        printf("* %%%d, i64 0, i64 %%%d\n", node->lhs->number, node->rhs->number);
         return;
     case ND_FUNCALL:
         for(Node *arg = node->args; arg; arg = arg->next)
@@ -243,7 +263,9 @@ void codegen(Function *prog) {
 
         for(Obj *var = fn->locals; var; var = var->next) {
             if(var->ty->kind == TY_ARRAY) {
-                printf("    %%%d = alloca [%d x i32], align 4\n", var->offset, var->ty->array_len);
+                printf("    %%%d = alloca ", var->offset);
+                gen_array(var->ty);
+                printf(", align 4\n");
                 continue;
             }
             int c = pointer_count(var->ty);

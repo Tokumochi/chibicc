@@ -77,12 +77,18 @@ void add_type(Node *node) {
         node->ty = node->var->ty;
         return;
     case ND_ADDR:
-    case ND_GETP:
-        if(node->lhs->ty->kind == TY_ARRAY)
-            node->ty = pointer_to(node->lhs->ty->base);
-        else
-            node->ty = pointer_to(node->lhs->ty);
+        if(node->lhs->kind != ND_VAR)
+            error_tok(node->lhs->tok, "not an lvalue");
+        node->ty = pointer_to(node->lhs->ty);
         return;
+    case ND_GETP: {
+        if(node->lhs->ty->kind != TY_ARRAY)
+            error_tok(node->lhs->tok, "not an lvalue");
+        node->ty = node->lhs->ty->base;
+        if(node->ty->kind != TY_ARRAY)
+            node->ty = pointer_to(node->ty);
+        return;
+    }
     case ND_DEREF:
         if(!node->lhs->ty->base)
             error_tok(node->tok, "invalid pointer dereference");
