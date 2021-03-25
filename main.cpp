@@ -9,7 +9,6 @@ static llvm::LLVMContext context;
 static llvm::IRBuilder<> builder(context);
 static std::unique_ptr<llvm::Module> module;
 
-
 int main(int argc, char **argv) {
     if(argc != 2) {
         std::cerr << argv[0] << ": invalid number of arguments\n";
@@ -24,7 +23,26 @@ int main(int argc, char **argv) {
         llvm::Function::ExternalLinkage, "main", module.get());
     builder.SetInsertPoint(llvm::BasicBlock::Create(context, "", mainFunc));
 
-    builder.CreateRet(builder.getInt32(strtol(p, &p, 10)));
+    llvm::Value* value = builder.CreateAlloca(builder.getInt32Ty(), nullptr);
+    builder.CreateStore(builder.getInt32(strtol(p, &p, 10)), value);
+    value = builder.CreateLoad(value);
+
+    while(*p) {
+        if(*p == '+') {
+            p++;
+            value = builder.CreateAdd(value, builder.getInt32(strtol(p, &p, 10)));
+            continue;
+        }
+        if(*p == '-') {
+            p++;
+            value = builder.CreateSub(value, builder.getInt32(strtol(p, &p, 10)));
+            continue;
+        }
+        std::cerr << "unexpected character: '" << *p << "'\n";
+        return 1;
+    }
+
+    builder.CreateRet(value);
 
     module->print(llvm::outs(), nullptr);
 }
