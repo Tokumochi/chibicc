@@ -67,6 +67,10 @@ static void gen_expr(Node *node) {
 
 static bool gen_stmt(Node *node) {
     switch(node->kind) {
+    case ND_BLOCK:
+        for(Node *n = node->body; n; n = n->next)
+            if(gen_stmt(n)) return true;
+        return false;
     case ND_RETURN:
         gen_expr(node->lhs);
         builder.CreateRet(node->lhs->lv);
@@ -89,8 +93,7 @@ void codegen(Function *prog) {
     for(Obj *var = prog->locals; var; var = var->next)
         var->lv = builder.CreateAlloca(builder.getInt32Ty());
 
-    for(Node *n = prog->body; n; n = n->next)
-        if(gen_stmt(n)) break;
+    if(gen_stmt(prog->body));
 
     module->print(llvm::outs(), nullptr);
 }
