@@ -53,6 +53,15 @@ static void gen_expr(Node *node) {
     error("invalid expression");
 }
 
+static void gen_stmt(Node *node) {
+    if(node->kind == ND_EXPR_STMT) {
+        gen_expr(node->lhs);
+        return;
+    }
+
+    error("invalid statement");
+}
+
 void codegen(Node *node) {
     module = std::make_unique<llvm::Module>("top", context);
     llvm::Function* mainFunc = llvm::Function::Create(
@@ -61,9 +70,12 @@ void codegen(Node *node) {
     builder.SetInsertPoint(llvm::BasicBlock::Create(context, "", mainFunc));
 
     // Traverse the AST to emit LLVM IR
-    gen_expr(node);
+    for(Node *n = node; n; n = n->next) {
+        node = n;
+        gen_stmt(n);
+    }
 
-    builder.CreateRet(node->lv);
+    builder.CreateRet(node->lhs->lv);
 
     module->print(llvm::outs(), nullptr);
 }
