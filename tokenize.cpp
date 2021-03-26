@@ -90,10 +90,17 @@ Token *tokenize(char *p) {
             continue;
         }
 
+        // Identifier
+        if('a' <= *p && *p <= 'z') {
+            cur = cur->next = new_token(TK_IDENT, p, p + 1);
+            p++;
+            continue;
+        }
+
         // Punctuators
         int punct_len = read_punct(p);
         if(punct_len) {
-            cur = cur->next = new_token(TK_PUNC, p, p + punct_len);
+            cur = cur->next = new_token(TK_PUNCT, p, p + punct_len);
             p += punct_len;
             continue;
         }

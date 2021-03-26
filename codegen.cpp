@@ -4,6 +4,8 @@ static llvm::LLVMContext context;
 static llvm::IRBuilder<> builder(context);
 static std::unique_ptr<llvm::Module> module;
 
+static llvm::Value *varLvs[26];
+
 static void gen_expr(Node *node) {
     switch(node->kind) {
     case ND_NUM:
@@ -15,6 +17,18 @@ static void gen_expr(Node *node) {
         gen_expr(node->lhs);
         node->lv = builder.CreateNeg(node->lhs->lv);
         return;
+    case ND_VAR:
+        node->lv = builder.CreateLoad(varLvs[node->name - 'a']);
+        return;
+    case ND_ASSIGN:
+        if(node->lhs->kind == ND_VAR) {
+            gen_expr(node->rhs);
+            builder.CreateStore(node->rhs->lv, varLvs[node->lhs->name - 'a']);
+            node->lv = node->rhs->lv;
+            return;
+        }
+
+        error("not an lvalue");
     }
 
     gen_expr(node->lhs);
@@ -68,6 +82,9 @@ void codegen(Node *node) {
         llvm::FunctionType::get(llvm::Type::getInt32Ty(context), false),
         llvm::Function::ExternalLinkage, "main", module.get());
     builder.SetInsertPoint(llvm::BasicBlock::Create(context, "", mainFunc));
+
+    for(int i = 0; i < 26; i++)
+        varLvs[i] = builder.CreateAlloca(builder.getInt32Ty(), nullptr);
 
     // Traverse the AST to emit LLVM IR
     for(Node *n = node; n; n = n->next) {
