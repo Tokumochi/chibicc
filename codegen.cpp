@@ -65,10 +65,15 @@ static void gen_expr(Node *node) {
     error("invalid expression");
 }
 
-static void gen_stmt(Node *node) {
-    if(node->kind == ND_EXPR_STMT) {
+static bool gen_stmt(Node *node) {
+    switch(node->kind) {
+    case ND_RETURN:
         gen_expr(node->lhs);
-        return;
+        builder.CreateRet(node->lhs->lv);
+        return true;
+    case ND_EXPR_STMT:
+        gen_expr(node->lhs);
+        return false;
     }
 
     error("invalid statement");
@@ -84,14 +89,8 @@ void codegen(Function *prog) {
     for(Obj *var = prog->locals; var; var = var->next)
         var->lv = builder.CreateAlloca(builder.getInt32Ty());
 
-    Node *main;
-
-    for(Node *n = prog->body; n; n = n->next) {
-        main = n;
-        gen_stmt(n);
-    }
-
-    builder.CreateRet(main->lhs->lv);
+    for(Node *n = prog->body; n; n = n->next)
+        if(gen_stmt(n)) break;
 
     module->print(llvm::outs(), nullptr);
 }
