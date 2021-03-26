@@ -4,12 +4,10 @@ static llvm::LLVMContext context;
 static llvm::IRBuilder<> builder(context);
 static std::unique_ptr<llvm::Module> module;
 
-static llvm::Value *varLvs[26];
-
 static void gen_expr(Node *node) {
     switch(node->kind) {
     case ND_NUM:
-        node->lv = builder.CreateAlloca(builder.getInt32Ty(), nullptr);
+        node->lv = builder.CreateAlloca(builder.getInt32Ty());
         builder.CreateStore(builder.getInt32(node->val), node->lv);
         node->lv = builder.CreateLoad(node->lv);
         return;
@@ -18,12 +16,12 @@ static void gen_expr(Node *node) {
         node->lv = builder.CreateNeg(node->lhs->lv);
         return;
     case ND_VAR:
-        node->lv = builder.CreateLoad(varLvs[node->name - 'a']);
+        node->lv = builder.CreateLoad(node->var->lv);
         return;
     case ND_ASSIGN:
         if(node->lhs->kind == ND_VAR) {
             gen_expr(node->rhs);
-            builder.CreateStore(node->rhs->lv, varLvs[node->lhs->name - 'a']);
+            builder.CreateStore(node->rhs->lv, node->lhs->var->lv);
             node->lv = node->rhs->lv;
             return;
         }
@@ -76,23 +74,24 @@ static void gen_stmt(Node *node) {
     error("invalid statement");
 }
 
-void codegen(Node *node) {
+void codegen(Function *prog) {
     module = std::make_unique<llvm::Module>("top", context);
     llvm::Function* mainFunc = llvm::Function::Create(
         llvm::FunctionType::get(llvm::Type::getInt32Ty(context), false),
         llvm::Function::ExternalLinkage, "main", module.get());
     builder.SetInsertPoint(llvm::BasicBlock::Create(context, "", mainFunc));
 
-    for(int i = 0; i < 26; i++)
-        varLvs[i] = builder.CreateAlloca(builder.getInt32Ty(), nullptr);
+    for(Obj *var = prog->locals; var; var = var->next)
+        var->lv = builder.CreateAlloca(builder.getInt32Ty());
 
-    // Traverse the AST to emit LLVM IR
-    for(Node *n = node; n; n = n->next) {
-        node = n;
+    Node *main;
+
+    for(Node *n = prog->body; n; n = n->next) {
+        main = n;
         gen_stmt(n);
     }
 
-    builder.CreateRet(node->lhs->lv);
+    builder.CreateRet(main->lhs->lv);
 
     module->print(llvm::outs(), nullptr);
 }
