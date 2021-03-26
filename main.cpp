@@ -9,6 +9,10 @@
 #include <llvm/IR/LLVMContext.h>
 #include <llvm/IR/Module.h>
 
+//
+// Tokenizer
+//
+
 typedef enum {
     TK_PUNC, // Punctuators
     TK_NUM,  // Numeric literals
@@ -109,8 +113,8 @@ static Token *tokenize(void) {
             continue;
         }
 
-        // Punctuator
-        if(*p == '+' || *p == '-') {
+        // Punctuators
+        if(ispunct(*p)) {
             cur = cur->next = new_token(TK_PUNC, p, p + 1);
             p++;
             continue;
@@ -123,16 +127,156 @@ static Token *tokenize(void) {
     return head.next;
 }
 
+//
+// Parser
+//
+
+typedef enum {
+    ND_ADD, // +
+    ND_SUB, // -
+    ND_MUL, // *
+    ND_DIV, // /
+    ND_NUM, // Integer
+} NodeKind;
+
+// AST node type
+typedef struct Node Node;
+struct Node {
+    NodeKind kind;   // Node kind
+    Node *lhs;       // Left-hand side
+    Node *rhs;       // Right-hand side
+    llvm::Value *lv; // LLVM value
+    int val;         // Used if kind == ND_NUM
+};
+
+static Node *new_node(NodeKind kind) {
+    Node *node = (Node*) calloc(1, sizeof(Node));
+    node->kind = kind;
+    return node;
+}
+
+static Node *new_binary(NodeKind kind, Node *lhs, Node *rhs) {
+    Node *node = new_node(kind);
+    node->lhs = lhs;
+    node->rhs = rhs;
+    return node;
+}
+
+static Node *new_num(int val) {
+    Node *node = new_node(ND_NUM);
+    node->val = val;
+    return node;
+}
+
+static Node *expr(Token **rest, Token *tok);
+static Node *mul(Token **rest, Token *tok);
+static Node *primary(Token **rest, Token *tok);
+
+// expr = mul ("+" mul | "-" mul)*
+static Node *expr(Token **rest, Token *tok) {
+    Node *node = mul(&tok, tok);
+
+    for(;;) {
+        if(equal(tok, "+")) {
+            node = new_binary(ND_ADD, node, mul(&tok, tok->next));
+            continue;
+        }
+
+        if(equal(tok, "-")) {
+            node = new_binary(ND_SUB, node, mul(&tok, tok->next));
+            continue;
+        }
+
+        *rest = tok;
+        return node;
+    }
+}
+
+// mul = primary ("*" primary | "/" primary)*
+static Node *mul(Token **rest, Token *tok) {
+    Node *node = primary(&tok, tok);
+    
+    for(;;) {
+        if(equal(tok, "*")) {
+            node = new_binary(ND_MUL, node, primary(&tok, tok->next));
+            continue;
+        }
+
+        if(equal(tok, "/")) {
+            node = new_binary(ND_DIV, node, primary(&tok, tok->next));
+            continue;
+        }
+
+        *rest = tok;
+        return node;
+    }
+}
+
+// primary = "(" expr ")" | num
+static Node *primary(Token **rest, Token *tok) {
+    if(equal(tok, "(")) {
+        Node *node = expr(&tok, tok->next);
+        *rest = skip(tok, ")");
+        return node;
+    }
+
+    if(tok->kind == TK_NUM) {
+        Node *node = new_num(tok->val);
+        *rest = tok->next;
+        return node;
+    }
+
+    error_tok(tok, "expected an expression");
+}
+
+//
+// Code generator
+//
+
 static llvm::LLVMContext context;
 static llvm::IRBuilder<> builder(context);
 static std::unique_ptr<llvm::Module> module;
+
+static void gen_expr(Node *node) {
+    if(node->kind == ND_NUM) {
+        node->lv = builder.CreateAlloca(builder.getInt32Ty(), nullptr);
+        builder.CreateStore(builder.getInt32(node->val), node->lv);
+        node->lv = builder.CreateLoad(node->lv);
+        return;
+    }
+
+    gen_expr(node->lhs);
+    gen_expr(node->rhs);
+
+    switch(node->kind) {
+    case ND_ADD:
+        node->lv = builder.CreateAdd(node->lhs->lv, node->rhs->lv);
+        return;
+    case ND_SUB:
+        node->lv = builder.CreateSub(node->lhs->lv, node->rhs->lv);
+        return;
+    case ND_MUL:
+        node->lv = builder.CreateMul(node->lhs->lv, node->rhs->lv);
+        return;
+    case ND_DIV:
+        node->lv = builder.CreateSDiv(node->lhs->lv, node->rhs->lv);
+        return;
+    }
+
+    error("invalid expression");
+}
 
 int main(int argc, char **argv) {
     if(argc != 2)
         error("%s: invalid number of arguments\n", argv[0]);
 
+    // Tokenize and parse.
     current_input = argv[1];
     Token *tok = tokenize();
+    Node *node = expr(&tok, tok);
+
+    if(tok->kind != TK_EOF)
+        error_tok(tok, "extra token");
 
     module = std::make_unique<llvm::Module>("top", context);
     llvm::Function* mainFunc = llvm::Function::Create(
@@ -140,27 +284,12 @@ int main(int argc, char **argv) {
         llvm::Function::ExternalLinkage, "main", module.get());
     builder.SetInsertPoint(llvm::BasicBlock::Create(context, "", mainFunc));
 
-    llvm::Value* value = builder.CreateAlloca(builder.getInt32Ty(), nullptr);
+    // Traverse the AST to emit LLVM IR
+    gen_expr(node);
 
-    // The first token must be a number
-    builder.CreateStore(builder.getInt32(get_number(tok)), value);
-    value = builder.CreateLoad(value);
-    tok = tok->next;
-
-    // ... followed by either '+ <number>' or '- <number>'.
-    while(tok->kind != TK_EOF) {
-        if(equal(tok, "+")) {
-            value = builder.CreateAdd(value, builder.getInt32(get_number(tok->next)));
-            tok = tok->next->next;
-            continue;
-        }
-
-        tok = skip(tok, "-");
-        value = builder.CreateSub(value, builder.getInt32(get_number(tok)));
-        tok = tok->next;    
-    }
-
-    builder.CreateRet(value);
+    builder.CreateRet(node->lv);
 
     module->print(llvm::outs(), nullptr);
+
+    return 0;
 }
