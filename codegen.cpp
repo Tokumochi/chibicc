@@ -30,7 +30,7 @@ static void gen_expr(Node *node) {
             return;
         }
 
-        error("not an lvalue");
+        error_tok(node->tok, "not an lvalue");
     }
 
     gen_expr(node->lhs);
@@ -66,7 +66,7 @@ static void gen_expr(Node *node) {
         return;
     }
 
-    error("invalid expression");
+    error_tok(node->tok, "invalid expression");
 }
 
 static bool gen_stmt(Node *node) {
@@ -136,7 +136,7 @@ static bool gen_stmt(Node *node) {
         return false;
     }
 
-    error("invalid statement");
+    error_tok(node->tok, "invalid statement");
 }
 
 void codegen(Function *prog) {
