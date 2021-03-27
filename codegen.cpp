@@ -76,14 +76,13 @@ static bool gen_stmt(Node *node) {
         llvm::BasicBlock *elseBlock;
         llvm::BasicBlock *endBlock;
         thenBlock = llvm::BasicBlock::Create(context, "", mainFunc);
-        if(node->els)
-            elseBlock = llvm::BasicBlock::Create(context, "", mainFunc);
         endBlock = llvm::BasicBlock::Create(context, "", mainFunc);
         gen_expr(node->cond);
         node->lv = builder.CreateICmpEQ(builder.getInt32(0), node->cond->lv);
-        if(node->els)
+        if(node->els) {
+            elseBlock = llvm::BasicBlock::Create(context, "", mainFunc);
             builder.CreateCondBr(node->lv, elseBlock, thenBlock);
-        else
+         } else
             builder.CreateCondBr(node->lv, endBlock, thenBlock);
         builder.SetInsertPoint(thenBlock);
         if(!gen_stmt(node->then))
@@ -92,6 +91,32 @@ static bool gen_stmt(Node *node) {
             builder.SetInsertPoint(elseBlock);
             if(!gen_stmt(node->els))
                 builder.CreateBr(endBlock);
+        }
+        builder.SetInsertPoint(endBlock);
+        return false;
+    }
+    case ND_FOR: {
+        llvm::BasicBlock *beginBlock;
+        llvm::BasicBlock *thenBlock = llvm::BasicBlock::Create(context, "", mainFunc);
+        llvm::BasicBlock *endBlock = llvm::BasicBlock::Create(context, "", mainFunc);
+        gen_stmt(node->init);
+        if(node->cond) {
+            beginBlock = llvm::BasicBlock::Create(context, "", mainFunc);
+            builder.CreateBr(beginBlock);
+            builder.SetInsertPoint(beginBlock);
+            gen_expr(node->cond);
+            node->lv = builder.CreateICmpEQ(builder.getInt32(0), node->cond->lv);
+            builder.CreateCondBr(node->lv, endBlock, thenBlock);
+        } else
+            builder.CreateBr(thenBlock);
+        builder.SetInsertPoint(thenBlock);
+        if(!gen_stmt(node->then)) {
+            if(node->inc)
+                gen_expr(node->inc);
+            if(node->cond)
+                builder.CreateBr(beginBlock);
+            else
+                builder.CreateBr(thenBlock);
         }
         builder.SetInsertPoint(endBlock);
         return false;
