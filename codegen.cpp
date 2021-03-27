@@ -4,6 +4,10 @@ static llvm::LLVMContext context;
 static llvm::IRBuilder<> builder(context);
 static std::unique_ptr<llvm::Module> module;
 
+static llvm::Function *mainFunc;
+static llvm::BasicBlock *retBlock;
+static llvm::Value *retValue;
+
 static void gen_expr(Node *node) {
     switch(node->kind) {
     case ND_NUM:
@@ -67,13 +71,39 @@ static void gen_expr(Node *node) {
 
 static bool gen_stmt(Node *node) {
     switch(node->kind) {
+    case ND_IF: {
+        llvm::BasicBlock *thenBlock;
+        llvm::BasicBlock *elseBlock;
+        llvm::BasicBlock *endBlock;
+        thenBlock = llvm::BasicBlock::Create(context, "", mainFunc);
+        if(node->els)
+            elseBlock = llvm::BasicBlock::Create(context, "", mainFunc);
+        endBlock = llvm::BasicBlock::Create(context, "", mainFunc);
+        gen_expr(node->cond);
+        node->lv = builder.CreateICmpEQ(builder.getInt32(0), node->cond->lv);
+        if(node->els)
+            builder.CreateCondBr(node->lv, elseBlock, thenBlock);
+        else
+            builder.CreateCondBr(node->lv, endBlock, thenBlock);
+        builder.SetInsertPoint(thenBlock);
+        if(!gen_stmt(node->then))
+            builder.CreateBr(endBlock);
+        if(node->els) {
+            builder.SetInsertPoint(elseBlock);
+            if(!gen_stmt(node->els))
+                builder.CreateBr(endBlock);
+        }
+        builder.SetInsertPoint(endBlock);
+        return false;
+    }
     case ND_BLOCK:
         for(Node *n = node->body; n; n = n->next)
             if(gen_stmt(n)) return true;
         return false;
     case ND_RETURN:
         gen_expr(node->lhs);
-        builder.CreateRet(node->lhs->lv);
+        builder.CreateStore(node->lhs->lv, retValue);
+        builder.CreateBr(retBlock);
         return true;
     case ND_EXPR_STMT:
         gen_expr(node->lhs);
@@ -85,15 +115,23 @@ static bool gen_stmt(Node *node) {
 
 void codegen(Function *prog) {
     module = std::make_unique<llvm::Module>("top", context);
-    llvm::Function* mainFunc = llvm::Function::Create(
+    mainFunc = llvm::Function::Create(
         llvm::FunctionType::get(llvm::Type::getInt32Ty(context), false),
         llvm::Function::ExternalLinkage, "main", module.get());
     builder.SetInsertPoint(llvm::BasicBlock::Create(context, "", mainFunc));
 
+    retBlock = llvm::BasicBlock::Create(context, "", mainFunc);
+    retValue = builder.CreateAlloca(builder.getInt32Ty());
+
     for(Obj *var = prog->locals; var; var = var->next)
         var->lv = builder.CreateAlloca(builder.getInt32Ty());
 
-    if(gen_stmt(prog->body));
+    if(!gen_stmt(prog->body))
+        builder.CreateBr(retBlock);
+
+    builder.SetInsertPoint(retBlock);
+    retValue = builder.CreateLoad(retValue);
+    builder.CreateRet(retValue);
 
     module->print(llvm::outs(), nullptr);
 }
