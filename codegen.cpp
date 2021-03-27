@@ -99,7 +99,8 @@ static bool gen_stmt(Node *node) {
         llvm::BasicBlock *beginBlock;
         llvm::BasicBlock *thenBlock = llvm::BasicBlock::Create(context, "", mainFunc);
         llvm::BasicBlock *endBlock = llvm::BasicBlock::Create(context, "", mainFunc);
-        gen_stmt(node->init);
+        if(node->init)
+            gen_stmt(node->init);
         if(node->cond) {
             beginBlock = llvm::BasicBlock::Create(context, "", mainFunc);
             builder.CreateBr(beginBlock);
