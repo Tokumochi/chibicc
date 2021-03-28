@@ -4,6 +4,11 @@
 // accumulated to this list.
 Obj *locals;
 
+// List of functions
+static Function funcs;
+
+static Type *declspec(Token **rest, Token *tok);
+static Type *declarator(Token **rest, Token *tok, Type *ty);
 static Node *declaration(Token **rest, Token *tok);
 static Node *compound_stmt(Token **rest, Token *tok);
 static Node *expr_stmt(Token **rest, Token *tok);
@@ -15,6 +20,14 @@ static Node *add(Token **rest, Token *tok);
 static Node *mul(Token **rest, Token *tok);
 static Node *unary(Token **rest, Token *toK);
 static Node *primary(Token **rest, Token *tok);
+
+// Find a function by name.
+static Function *find_func(Token *tok) {
+    for(Function *fn = funcs.next; fn; fn = fn->next)
+        if(strlen(fn->name) == tok->len && !strncmp(tok->loc, fn->name, tok->len))
+            return fn;
+    return NULL;
+}
 
 // Find a local variable by name.
 static Obj *find_var(Token *tok) {
@@ -77,7 +90,17 @@ static Type *declspec(Token **rest, Token *tok) {
     return ty_int;
 }
 
-// declarator = "*"* ident
+// type-suffix = ("(" func-params)?
+static Type *type_suffix(Token **rest, Token *tok, Type *ty) {
+    if(equal(tok, "(")) {
+        *rest = skip(tok->next, ")");
+        return func_type(ty);
+    }
+    *rest = tok;
+    return ty;
+}
+
+// declarator = "*"* ident type-suffix
 static Type *declarator(Token **rest, Token *tok, Type *ty) {
     while(consume(&tok, tok, "*"))
         ty = pointer_to(ty);
@@ -85,8 +108,8 @@ static Type *declarator(Token **rest, Token *tok, Type *ty) {
     if(tok->kind != TK_IDENT)
         error_tok(tok, "expected a variable name");
     
+    ty = type_suffix(rest, tok->next, ty);
     ty->name = tok;
-    *rest = tok->next;
     return ty;
 }
 
@@ -365,7 +388,8 @@ static Node *unary(Token **rest, Token *tok) {
     return primary(rest, tok);
 }
 
-// primary = "(" expr ")" | ident | num
+// primary = "(" expr ")" | ident args? | num
+// args = "(" ")"
 static Node *primary(Token **rest, Token *tok) {
     if(equal(tok, "(")) {
         Node *node = expr(&tok, tok->next);
@@ -374,6 +398,17 @@ static Node *primary(Token **rest, Token *tok) {
     }
 
     if(tok->kind == TK_IDENT) {
+        // Function call
+        if(equal(tok->next, "(")) {
+            Node *node = new_node(ND_FUNCALL, tok);
+            node->func = find_func(tok);
+            if(!node->func)
+                error_tok(tok, "undefined function");
+            *rest = skip(tok->next->next, ")");
+            return node;
+        }
+
+        // Variable
         Obj *var = find_var(tok);
         if(!var)
             error_tok(tok, "undefined variable");
@@ -390,12 +425,27 @@ static Node *primary(Token **rest, Token *tok) {
     error_tok(tok, "expected an expression");
 }
 
-// program = stmt*
-Function *parse(Token *tok) {
+static Function *function(Token **rest, Token *tok) {
+    Type *ty = declspec(&tok, tok);
+    ty = declarator(&tok, tok, ty);
+
+    locals = NULL;
+
+    Function *fn = (Function*) calloc(1, sizeof(Function));
+    fn->name = get_ident(ty->name);
+
     tok = skip(tok, "{");
+    fn->body = compound_stmt(rest, tok);
+    fn->locals = locals;
+    return fn;
+}
+
+// program = function-definition*
+Function *parse(Token *tok) {
+    funcs = {};
+    Function *cur = &funcs;
     
-    Function *prog = (Function*) calloc(1, sizeof(Function));
-    prog->body = compound_stmt(&tok, tok);
-    prog->locals = locals;
-    return prog;
+    while(tok->kind != TK_EOF)
+        cur = cur->next = function(&tok, tok);
+    return funcs.next;
 }

@@ -4,7 +4,7 @@ static llvm::LLVMContext context;
 static llvm::IRBuilder<> builder(context);
 static std::unique_ptr<llvm::Module> module;
 
-static llvm::Function *mainFunc;
+static llvm::Function *curFunc;
 static llvm::BasicBlock *retBlock;
 static llvm::Value *retValue;
 
@@ -46,7 +46,10 @@ static void gen_expr(Node *node) {
         gen_expr(node->rhs);
         builder.CreateStore(node->rhs->lv, node->lhs->lv);
         node->lv = node->rhs->lv;
-        return;           
+        return;
+    case ND_FUNCALL:
+        node->lv = builder.CreateCall(node->func->lf);
+        return;          
     }
 
     gen_expr(node->lhs);
@@ -91,12 +94,12 @@ static bool gen_stmt(Node *node) {
         llvm::BasicBlock *thenBlock;
         llvm::BasicBlock *elseBlock;
         llvm::BasicBlock *endBlock;
-        thenBlock = llvm::BasicBlock::Create(context, "", mainFunc);
-        endBlock = llvm::BasicBlock::Create(context, "", mainFunc);
+        thenBlock = llvm::BasicBlock::Create(context, "", curFunc);
+        endBlock = llvm::BasicBlock::Create(context, "", curFunc);
         gen_expr(node->cond);
         node->lv = builder.CreateICmpEQ(builder.getInt32(0), node->cond->lv);
         if(node->els) {
-            elseBlock = llvm::BasicBlock::Create(context, "", mainFunc);
+            elseBlock = llvm::BasicBlock::Create(context, "", curFunc);
             builder.CreateCondBr(node->lv, elseBlock, thenBlock);
          } else
             builder.CreateCondBr(node->lv, endBlock, thenBlock);
@@ -113,12 +116,12 @@ static bool gen_stmt(Node *node) {
     }
     case ND_FOR: {
         llvm::BasicBlock *beginBlock;
-        llvm::BasicBlock *thenBlock = llvm::BasicBlock::Create(context, "", mainFunc);
-        llvm::BasicBlock *endBlock = llvm::BasicBlock::Create(context, "", mainFunc);
+        llvm::BasicBlock *thenBlock = llvm::BasicBlock::Create(context, "", curFunc);
+        llvm::BasicBlock *endBlock = llvm::BasicBlock::Create(context, "", curFunc);
         if(node->init)
             gen_stmt(node->init);
         if(node->cond) {
-            beginBlock = llvm::BasicBlock::Create(context, "", mainFunc);
+            beginBlock = llvm::BasicBlock::Create(context, "", curFunc);
             builder.CreateBr(beginBlock);
             builder.SetInsertPoint(beginBlock);
             gen_expr(node->cond);
@@ -164,23 +167,26 @@ static llvm::Type *gen_type(Obj *var) {
 
 void codegen(Function *prog) {
     module = std::make_unique<llvm::Module>("top", context);
-    mainFunc = llvm::Function::Create(
-        llvm::FunctionType::get(llvm::Type::getInt32Ty(context), false),
-        llvm::Function::ExternalLinkage, "main", module.get());
-    builder.SetInsertPoint(llvm::BasicBlock::Create(context, "", mainFunc));
 
-    retBlock = llvm::BasicBlock::Create(context, "", mainFunc);
-    retValue = builder.CreateAlloca(builder.getInt32Ty());
+    for(Function *fn = prog; fn; fn = fn->next) {
+        curFunc = fn->lf = llvm::Function::Create(
+            llvm::FunctionType::get(llvm::Type::getInt32Ty(context), false),
+            llvm::Function::ExternalLinkage, fn->name, module.get());
+        builder.SetInsertPoint(llvm::BasicBlock::Create(context, "", curFunc));
 
-    for(Obj *var = prog->locals; var; var = var->next)
-        var->lv = builder.CreateAlloca(gen_type(var));
+        retBlock = llvm::BasicBlock::Create(context, "", curFunc);
+        retValue = builder.CreateAlloca(builder.getInt32Ty());
 
-    if(!gen_stmt(prog->body))
-        builder.CreateBr(retBlock);
+        for(Obj *var = fn->locals; var; var = var->next)
+            var->lv = builder.CreateAlloca(gen_type(var));
 
-    builder.SetInsertPoint(retBlock);
-    retValue = builder.CreateLoad(retValue);
-    builder.CreateRet(retValue);
+        if(!gen_stmt(fn->body))
+            builder.CreateBr(retBlock);
+    
+        builder.SetInsertPoint(retBlock);
+        retValue = builder.CreateLoad(retValue);
+        builder.CreateRet(retValue);
+    }
 
     module->print(llvm::outs(), nullptr);
 }
