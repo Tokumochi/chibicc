@@ -1,10 +1,16 @@
 #include "chibicc.h"
 
-Type base_int = (Type){TY_INT};
+static Type base_int = (Type){TY_INT};
 Type *ty_int = &base_int;
 
 bool is_integer(Type *ty) {
     return ty->kind == TY_INT;
+}
+
+Type *copy_type(Type *ty) {
+    Type *ret = (Type*) calloc(1, sizeof(Type));
+    *ret = *ty;
+    return ret;
 }
 
 Type *pointer_to(Type *base) {
@@ -34,6 +40,8 @@ void add_type(Node *node) {
     add_type(node->inc);
 
     for(Node *n = node->body; n; n = n->next)
+        add_type(n);
+    for(Node *n = node->args; n; n = n->next)
         add_type(n);
     
     switch(node->kind) {

@@ -90,12 +90,30 @@ static Type *declspec(Token **rest, Token *tok) {
     return ty_int;
 }
 
-// type-suffix = ("(" func-params)?
+// type-suffix = ("(" func-params? ")")?
+// func-params = param ("," param)*
+// paraｍ      = declspec declarator
 static Type *type_suffix(Token **rest, Token *tok, Type *ty) {
     if(equal(tok, "(")) {
-        *rest = skip(tok->next, ")");
-        return func_type(ty);
+        tok = tok->next;
+
+        Type head = {};
+        Type *cur = &head;
+
+        while(!equal(tok, ")")) {
+            if(cur != &head)
+                tok = skip(tok, ",");
+            Type *basety = declspec(&tok, tok);
+            Type *ty = declarator(&tok, tok, basety);
+            cur = cur->next = copy_type(ty);
+        }
+
+        ty = func_type(ty);
+        ty->params = head.next;
+        *rest = tok->next;
+        return ty;
     }
+
     *rest = tok;
     return ty;
 }
@@ -388,8 +406,31 @@ static Node *unary(Token **rest, Token *tok) {
     return primary(rest, tok);
 }
 
-// primary = "(" expr ")" | ident args? | num
-// args = "(" ")"
+// funcall = ident "(" (assign ("," assign)*)? ")"
+static Node *funcall(Token **rest, Token *tok) {
+    Token *start = tok;
+    tok = tok->next->next;
+
+    Node head = {};
+    Node *cur = &head;
+
+    while(!equal(tok, ")")) {
+        if(cur != &head)
+            tok = skip(tok, ",");
+        cur = cur->next = assign(&tok, tok);
+    }
+
+    *rest = skip(tok, ")");
+
+    Node *node = new_node(ND_FUNCALL, start);
+    node->func = find_func(start);
+    if(!node->func)
+        error_tok(start, "undefined function");
+    node->args = head.next;
+    return node;
+}
+
+// primary = "(" expr ")" | ident func-args? | num
 static Node *primary(Token **rest, Token *tok) {
     if(equal(tok, "(")) {
         Node *node = expr(&tok, tok->next);
@@ -399,14 +440,8 @@ static Node *primary(Token **rest, Token *tok) {
 
     if(tok->kind == TK_IDENT) {
         // Function call
-        if(equal(tok->next, "(")) {
-            Node *node = new_node(ND_FUNCALL, tok);
-            node->func = find_func(tok);
-            if(!node->func)
-                error_tok(tok, "undefined function");
-            *rest = skip(tok->next->next, ")");
-            return node;
-        }
+        if(equal(tok->next, "("))
+            return funcall(rest, tok);
 
         // Variable
         Obj *var = find_var(tok);
@@ -425,7 +460,14 @@ static Node *primary(Token **rest, Token *tok) {
     error_tok(tok, "expected an expression");
 }
 
-static Function *function(Token **rest, Token *tok) {
+static void create_param_lvars(Type *param) {
+    if(param) {
+        create_param_lvars(param->next);
+        new_lvar(get_ident(param->name), param);
+    }
+}
+
+static void function(Token **rest, Token *tok, Function **cur) {
     Type *ty = declspec(&tok, tok);
     ty = declarator(&tok, tok, ty);
 
@@ -433,11 +475,14 @@ static Function *function(Token **rest, Token *tok) {
 
     Function *fn = (Function*) calloc(1, sizeof(Function));
     fn->name = get_ident(ty->name);
+    create_param_lvars(ty->params);
+    fn->params = locals;
+    *cur = (*cur)->next = fn;
 
     tok = skip(tok, "{");
     fn->body = compound_stmt(rest, tok);
     fn->locals = locals;
-    return fn;
+    return;
 }
 
 // program = function-definition*
@@ -446,6 +491,6 @@ Function *parse(Token *tok) {
     Function *cur = &funcs;
     
     while(tok->kind != TK_EOF)
-        cur = cur->next = function(&tok, tok);
+        function(&tok, tok, &cur);
     return funcs.next;
 }

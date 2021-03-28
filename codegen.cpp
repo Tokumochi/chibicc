@@ -47,9 +47,16 @@ static void gen_expr(Node *node) {
         builder.CreateStore(node->rhs->lv, node->lhs->lv);
         node->lv = node->rhs->lv;
         return;
-    case ND_FUNCALL:
-        node->lv = builder.CreateCall(node->func->lf);
-        return;          
+    case ND_FUNCALL: {
+        std::vector<llvm::Value*> args;
+        for(Node *arg = node->args; arg; arg = arg->next) {
+            gen_expr(arg);
+            args.push_back(arg->lv);
+        }
+
+        node->lv = builder.CreateCall(node->func->lf, args);
+        return;    
+    }      
     }
 
     gen_expr(node->lhs);
@@ -169,8 +176,12 @@ void codegen(Function *prog) {
     module = std::make_unique<llvm::Module>("top", context);
 
     for(Function *fn = prog; fn; fn = fn->next) {
+        std::vector<llvm::Type*> args;
+        for(Obj *var = fn->params; var; var = var->next)
+            args.push_back(gen_type(var));
+
         curFunc = fn->lf = llvm::Function::Create(
-            llvm::FunctionType::get(llvm::Type::getInt32Ty(context), false),
+            llvm::FunctionType::get(llvm::Type::getInt32Ty(context), args, false),
             llvm::Function::ExternalLinkage, fn->name, module.get());
         builder.SetInsertPoint(llvm::BasicBlock::Create(context, "", curFunc));
 
@@ -179,6 +190,10 @@ void codegen(Function *prog) {
 
         for(Obj *var = fn->locals; var; var = var->next)
             var->lv = builder.CreateAlloca(gen_type(var));
+
+        int i = 0;
+        for(Obj *var = fn->params; var; var = var->next)
+            builder.CreateStore(curFunc->getArg(i++), var->lv);
 
         if(!gen_stmt(fn->body))
             builder.CreateBr(retBlock);

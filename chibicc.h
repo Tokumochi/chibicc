@@ -5,6 +5,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <vector>
 
 #include <llvm/IR/IRBuilder.h>
 #include <llvm/IR/LLVMContext.h>
@@ -62,6 +63,8 @@ typedef struct Function Function;
 struct Function {
     Function *next;
     char *name;
+    Obj *params;
+
     Node *body;
     Obj *locals;
     llvm::Function *lf;
@@ -113,6 +116,7 @@ struct Node {
 
     // Function call
     Function *func;
+    Node *args;
 
     Obj *var;        // Used if kind == ND_VAR
     int val;         // Used if kind == ND_NUM
@@ -143,11 +147,14 @@ struct Type {
 
     // Function type
     Type *return_ty;
+    Type *params;
+    Type *next;
 };
 
 extern Type *ty_int;
 
 bool is_integer(Type *ty);
+Type *copy_type(Type *ty);
 Type *pointer_to(Type *base);
 Type *func_type(Type *return_ty);
 void add_type(Node *node);
