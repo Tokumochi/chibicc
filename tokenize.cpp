@@ -47,6 +47,15 @@ Token *skip(Token *tok, const char *s) {
     return tok->next;
 }
 
+bool consume(Token **rest, Token *tok, const char *str) {
+    if(equal(tok, str)) {
+        *rest = tok->next;
+        return true;
+    }
+    *rest = tok;
+    return false;
+}
+
 static Token *new_token(TokenKind kind, char *start, char *end) {
     Token *tok = (Token*) calloc(1, sizeof(Token));
     tok->kind = kind;

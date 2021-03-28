@@ -56,9 +56,10 @@ static Node *new_var_node(Obj *var, Token *tok) {
     return node;
 }
 
-static Obj *new_lvar(char *name) {
+static Obj *new_lvar(char *name, Type *ty) {
     Obj *var = (Obj*) calloc(1, sizeof(Obj));
     var->name = name;
+    var->ty = ty;
     var->next = locals;
     locals = var;
     return var;
@@ -71,22 +72,27 @@ static char *get_ident(Token *tok) {
 }
 
 // declspec = "int"
-static void *declspec(Token **rest, Token *tok) {
+static Type *declspec(Token **rest, Token *tok) {
     *rest = skip(tok, "int");
+    return ty_int;
 }
 
-// declarator = ident
-static Token *declarator(Token **rest, Token *tok) {
+// declarator = "*"* ident
+static Type *declarator(Token **rest, Token *tok, Type *ty) {
+    while(consume(&tok, tok, "*"))
+        ty = pointer_to(ty);
+
     if(tok->kind != TK_IDENT)
         error_tok(tok, "expected a variable name");
     
+    ty->name = tok;
     *rest = tok->next;
-    return tok;
+    return ty;
 }
 
 // declaration = declspec (declarator ("=" expr)? ("," declarator ("=" expr)?)*)? ";"
 static Node *declaration(Token **rest, Token *tok) {
-    declspec(&tok, tok);
+    Type *basety = declspec(&tok, tok);
 
     Node head = {};
     Node *cur = &head;
@@ -96,13 +102,13 @@ static Node *declaration(Token **rest, Token *tok) {
         if(i++ > 0)
             tok = skip(tok, ",");
         
-        Token *name = declarator(&tok, tok);
-        Obj *var = new_lvar(get_ident(name));
+        Type *ty = declarator(&tok, tok, basety);
+        Obj *var = new_lvar(get_ident(ty->name), ty);
 
         if(!equal(tok, "="))
             continue;
         
-        Node *lhs = new_var_node(var, name);
+        Node *lhs = new_var_node(var, ty->name);
         Node *rhs = assign(&tok, tok->next);
         Node *node = new_binary(ND_ASSIGN, lhs, rhs, tok);
         cur = cur->next = new_unary(ND_EXPR_STMT, node, tok);
@@ -184,6 +190,7 @@ static Node *compound_stmt(Token **rest, Token *tok) {
             cur = cur->next = declaration(&tok, tok);
         else
             cur = cur->next = stmt(&tok, tok);
+        add_type(cur);
     }
 
     node->body = head.next;
@@ -274,6 +281,28 @@ static Node *relational(Token **rest, Token *tok) {
     }
 }
 
+static Node *new_add(Node *lhs, Node *rhs, Token *tok) {
+    add_type(lhs);
+    add_type(rhs);
+
+    // num + num
+    if(is_integer(lhs->ty) && is_integer(rhs->ty))
+        return new_binary(ND_ADD, lhs, rhs, tok);
+    
+    error_tok(tok, "invalid operands");
+}
+
+static Node *new_sub(Node *lhs, Node *rhs, Token *tok) {
+    add_type(lhs);
+    add_type(rhs);
+
+    // num - num
+    if(is_integer(lhs->ty) && is_integer(rhs->ty))
+        return new_binary(ND_SUB, lhs, rhs, tok);
+
+    error_tok(tok, "invalid operands");
+}
+
 // add = mul ("+" mul | "-" mul)*
 static Node *add(Token **rest, Token *tok) {
     Node *node = mul(&tok, tok);
@@ -282,12 +311,12 @@ static Node *add(Token **rest, Token *tok) {
         Token *start = tok;
 
         if(equal(tok, "+")) {
-            node = new_binary(ND_ADD, node, mul(&tok, tok->next), start);
+            node = new_add(node, mul(&tok, tok->next), start);
             continue;
         }
 
         if(equal(tok, "-")) {
-            node = new_binary(ND_SUB, node, mul(&tok, tok->next), start);
+            node = new_sub(node, mul(&tok, tok->next), start);
             continue;
         }
 
@@ -318,7 +347,7 @@ static Node *mul(Token **rest, Token *tok) {
     }
 }
 
-// unary = ("+" | "-") unary
+// unary = ("+" | "-" | "*" | "&") unary
 //       | primary
 static Node *unary(Token **rest, Token *tok) {
     if(equal(tok, "+"))
@@ -326,6 +355,12 @@ static Node *unary(Token **rest, Token *tok) {
     
     if(equal(tok, "-"))
         return new_unary(ND_NEG, unary(rest, tok->next), tok);
+    
+    if(equal(tok, "&"))
+        return new_unary(ND_ADDR, unary(rest, tok->next), tok);
+    
+    if(equal(tok, "*"))
+        return new_unary(ND_DEREF, unary(rest, tok->next), tok);
     
     return primary(rest, tok);
 }

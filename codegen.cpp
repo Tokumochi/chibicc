@@ -22,15 +22,31 @@ static void gen_expr(Node *node) {
     case ND_VAR:
         node->lv = builder.CreateLoad(node->var->lv);
         return;
+    case ND_DEREF:
+        gen_expr(node->lhs);
+        node->lv = builder.CreateLoad(node->lhs->lv);
+        return;
+    case ND_ADDR:
+        if(node->lhs->kind != ND_VAR)
+            error_tok(node->tok, "not an lvalue");
+        node->lv = node->lhs->var->lv;
+        return;
     case ND_ASSIGN:
-        if(node->lhs->kind == ND_VAR) {
-            gen_expr(node->rhs);
-            builder.CreateStore(node->rhs->lv, node->lhs->var->lv);
-            node->lv = node->rhs->lv;
-            return;
+        switch(node->lhs->kind) {
+        case ND_VAR:
+            node->lhs->lv = node->lhs->var->lv;
+            break;
+        case ND_DEREF:
+            gen_expr(node->lhs->lhs);
+            node->lhs->lv = node->lhs->lhs->lv;
+            break;     
+        default:
+            error_tok(node->lhs->tok, "not an lvalue");
         }
-
-        error_tok(node->tok, "not an lvalue");
+        gen_expr(node->rhs);
+        builder.CreateStore(node->rhs->lv, node->lhs->lv);
+        node->lv = node->rhs->lv;
+        return;           
     }
 
     gen_expr(node->lhs);
@@ -139,6 +155,13 @@ static bool gen_stmt(Node *node) {
     error_tok(node->tok, "invalid statement");
 }
 
+static llvm::Type *gen_type(Obj *var) {
+    llvm::Type *type = builder.getInt32Ty();
+    for(Type *t = var->ty; t->kind == TY_PTR; t = t->base)
+        type = llvm::PointerType::getUnqual(type);
+    return type;
+}
+
 void codegen(Function *prog) {
     module = std::make_unique<llvm::Module>("top", context);
     mainFunc = llvm::Function::Create(
@@ -150,7 +173,7 @@ void codegen(Function *prog) {
     retValue = builder.CreateAlloca(builder.getInt32Ty());
 
     for(Obj *var = prog->locals; var; var = var->next)
-        var->lv = builder.CreateAlloca(builder.getInt32Ty());
+        var->lv = builder.CreateAlloca(gen_type(var));
 
     if(!gen_stmt(prog->body))
         builder.CreateBr(retBlock);
