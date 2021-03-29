@@ -8,6 +8,13 @@ static llvm::Function *curFunc;
 static llvm::BasicBlock *retBlock;
 static llvm::Value *retValue;
 
+static void load(Node *node, llvm::Value* lv) {
+    if(node->ty->kind == TY_ARRAY)
+        node->lv = builder.CreateInBoundsGEP(lv, {builder.getInt64(0), builder.getInt64(0)});
+    else
+        node->lv = builder.CreateLoad(lv);
+}
+
 static void gen_expr(Node *node) {
     switch(node->kind) {
     case ND_NUM:
@@ -20,11 +27,11 @@ static void gen_expr(Node *node) {
         node->lv = builder.CreateNeg(node->lhs->lv);
         return;
     case ND_VAR:
-        node->lv = builder.CreateLoad(node->var->lv);
+        load(node, node->var->lv);
         return;
     case ND_DEREF:
         gen_expr(node->lhs);
-        node->lv = builder.CreateLoad(node->lhs->lv);
+        load(node, node->lhs->lv);
         return;
     case ND_ADDR:
         if(node->lhs->kind != ND_VAR)
@@ -167,8 +174,12 @@ static bool gen_stmt(Node *node) {
 
 static llvm::Type *gen_type(Obj *var) {
     llvm::Type *type = builder.getInt32Ty();
-    for(Type *t = var->ty; t->kind == TY_PTR; t = t->base)
-        type = llvm::PointerType::getUnqual(type);
+    for(Type *t = var->ty; t->base; t = t->base) {
+        if(t->kind == TY_PTR)
+            type = llvm::PointerType::getUnqual(type);
+        else
+            type = llvm::ArrayType::get(type, t->array_len);
+    }
     return type;
 }
 
