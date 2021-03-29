@@ -189,17 +189,27 @@ static llvm::Type *gen_type(Obj *var) {
     return type;
 }
 
-void codegen(Function *prog) {
+void codegen(Obj *prog) {
     module = std::make_unique<llvm::Module>("top", context);
 
-    for(Function *fn = prog; fn; fn = fn->next) {
+    for(Obj *fn = prog; fn; fn = fn->next) {
+        if(!fn->is_function)
+            continue;
+
         std::vector<llvm::Type*> args;
         for(Obj *var = fn->params; var; var = var->next)
             args.push_back(gen_type(var));
 
-        curFunc = fn->lf = llvm::Function::Create(
+        fn->lf = llvm::Function::Create(
             llvm::FunctionType::get(llvm::Type::getInt32Ty(context), args, false),
             llvm::Function::ExternalLinkage, fn->name, module.get());
+    }
+
+    for(Obj *fn = prog; fn; fn = fn->next) {
+        if(!fn->is_function)
+            continue;
+
+        curFunc = fn->lf;
         builder.SetInsertPoint(llvm::BasicBlock::Create(context, "", curFunc));
 
         retBlock = llvm::BasicBlock::Create(context, "", curFunc);
