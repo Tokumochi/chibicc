@@ -189,9 +189,22 @@ static llvm::Type *gen_type(Obj *var) {
     return type;
 }
 
-void codegen(Obj *prog) {
-    module = std::make_unique<llvm::Module>("top", context);
+static void emit_data(Obj *prog) {
+    for(Obj *var = prog; var; var = var->next) {
+        if(var->is_function)
+            continue;
 
+        llvm::Type *type = gen_type(var);
+        llvm::GlobalVariable *global = new llvm::GlobalVariable(
+            *module, type, false, llvm::GlobalValue::ExternalLinkage,
+            llvm::ConstantAggregateZero::get(type), var->name);
+        global->setAlignment(llvm::MaybeAlign(4));
+
+        var->lv = global;
+    }
+}
+
+static void emit_text(Obj *prog) {
     for(Obj *fn = prog; fn; fn = fn->next) {
         if(!fn->is_function)
             continue;
@@ -229,6 +242,13 @@ void codegen(Obj *prog) {
         retValue = builder.CreateLoad(retValue);
         builder.CreateRet(retValue);
     }
+}
+
+void codegen(Obj *prog) {
+    module = std::make_unique<llvm::Module>("top", context);
+
+    emit_data(prog);
+    emit_text(prog);
 
     module->print(llvm::outs(), nullptr);
 }

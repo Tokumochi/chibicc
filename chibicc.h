@@ -55,7 +55,6 @@ struct Obj {
     Obj *next;
     char *name;      // Variable name
     Type *ty;        // Type
-    bool is_local;   // local or global/function
     llvm::Value *lv; // LLVM value of variable
 
     // Global variable or function
