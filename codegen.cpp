@@ -54,6 +54,11 @@ static void gen_expr(Node *node) {
         builder.CreateStore(node->rhs->lv, node->lhs->lv);
         node->lv = node->rhs->lv;
         return;
+    case ND_GETP:
+        gen_expr(node->rhs);
+        node->lv = builder.CreateSExt(node->rhs->lv, builder.getInt64Ty());
+        node->lv = builder.CreateInBoundsGEP(node->lhs->var->lv, {builder.getInt64(0), node->lv});
+        return;
     case ND_FUNCALL: {
         std::vector<llvm::Value*> args;
         for(Node *arg = node->args; arg; arg = arg->next) {

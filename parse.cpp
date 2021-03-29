@@ -18,6 +18,7 @@ static Node *equality(Token **rest, Token *tok);
 static Node *relational(Token **rest, Token *tok);
 static Node *add(Token **rest, Token *tok);
 static Node *mul(Token **rest, Token *tok);
+static Node *postfix(Token **rest, Token *tok);
 static Node *unary(Token **rest, Token *toK);
 static Node *primary(Token **rest, Token *tok);
 
@@ -404,7 +405,7 @@ static Node *mul(Token **rest, Token *tok) {
 }
 
 // unary = ("+" | "-" | "*" | "&") unary
-//       | primary
+//       | postfix
 static Node *unary(Token **rest, Token *tok) {
     if(equal(tok, "+"))
         return unary(rest, tok->next);
@@ -418,7 +419,24 @@ static Node *unary(Token **rest, Token *tok) {
     if(equal(tok, "*"))
         return new_unary(ND_DEREF, unary(rest, tok->next), tok);
     
-    return primary(rest, tok);
+    return postfix(rest, tok);
+}
+
+// postfix = primary ("[" expr "]")?
+static Node *postfix(Token **rest, Token *tok) {
+    Node *node = primary(&tok, tok);
+    add_type(node);
+
+    if(equal(tok, "[")) {
+        if(node->kind != ND_VAR || node->ty->kind != TY_ARRAY)
+            error_tok(tok, "not an array");
+        Token *start = tok;
+        Node *idx = expr(&tok, tok->next);
+        tok = skip(tok, "]");
+        node = new_unary(ND_DEREF, new_binary(ND_GETP, node, idx, start), start);
+    }
+    *rest = tok;
+    return node;
 }
 
 // funcall = ident "(" (assign ("," assign)*)? ")"

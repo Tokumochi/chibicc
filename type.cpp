@@ -79,6 +79,7 @@ void add_type(Node *node) {
         node->ty = node->var->ty;
         return;
     case ND_ADDR:
+    case ND_GETP:
         if(node->lhs->ty->kind == TY_ARRAY)
             node->ty = pointer_to(node->lhs->ty->base);
         else
