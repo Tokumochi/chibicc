@@ -1,10 +1,13 @@
 #include "chibicc.h"
 
+static Type base_char = (Type){TY_CHAR, 1};
 static Type base_int = (Type){TY_INT, 8};
+
+Type *ty_char = &base_char;
 Type *ty_int = &base_int;
 
 bool is_integer(Type *ty) {
-    return ty->kind == TY_INT;
+    return ty->kind == TY_CHAR || ty->kind == TY_INT;
 }
 
 Type *copy_type(Type *ty) {

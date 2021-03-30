@@ -6,13 +6,26 @@ static std::unique_ptr<llvm::Module> module;
 
 static llvm::Function *curFunc;
 static llvm::BasicBlock *retBlock;
-static llvm::Value *retValue;
 
-static void load(Node *node, llvm::Value* lv) {
+static Node *ret;
+
+static void type_conversion(Node *node, Type *to) {
+    if(node->ty->kind == TY_CHAR && to->kind == TY_INT)
+        node->lv = builder.CreateSExt(node->lv, builder.getInt32Ty());
+    else if(node->ty->kind == TY_INT && to->kind == TY_CHAR)
+        node->lv = builder.CreateTrunc(node->lv, builder.getInt8Ty());
+}
+
+static void load(Node *node, llvm::Value *lv) {
     if(node->ty->kind == TY_ARRAY)
         node->lv = builder.CreateInBoundsGEP(lv, {builder.getInt64(0), builder.getInt64(0)});
     else
         node->lv = builder.CreateLoad(lv);
+}
+
+static void store(Node *lhs, Node *rhs) {
+    type_conversion(rhs, lhs->ty);
+    builder.CreateStore(rhs->lv, lhs->lv);
 }
 
 static void gen_expr(Node *node) {
@@ -51,7 +64,7 @@ static void gen_expr(Node *node) {
             error_tok(node->lhs->tok, "not an lvalue");
         }
         gen_expr(node->rhs);
-        builder.CreateStore(node->rhs->lv, node->lhs->lv);
+        store(node->lhs, node->rhs);
         node->lv = node->rhs->lv;
         return;
     case ND_GETP:
@@ -62,8 +75,11 @@ static void gen_expr(Node *node) {
         return;
     case ND_FUNCALL: {
         std::vector<llvm::Value*> args;
+        Obj *var = node->func->params;
         for(Node *arg = node->args; arg; arg = arg->next) {
             gen_expr(arg);
+            type_conversion(arg, var->ty);
+            var = var->next;
             args.push_back(arg->lv);
         }
 
@@ -167,7 +183,7 @@ static bool gen_stmt(Node *node) {
         return false;
     case ND_RETURN:
         gen_expr(node->lhs);
-        builder.CreateStore(node->lhs->lv, retValue);
+        store(ret, node->lhs);
         builder.CreateBr(retBlock);
         return true;
     case ND_EXPR_STMT:
@@ -179,14 +195,23 @@ static bool gen_stmt(Node *node) {
 }
 
 static llvm::Type *gen_type(Obj *var) {
-    llvm::Type *type = builder.getInt32Ty();
-    for(Type *t = var->ty; t->base; t = t->base) {
-        if(t->kind == TY_PTR)
-            type = llvm::PointerType::getUnqual(type);
-        else
-            type = llvm::ArrayType::get(type, t->array_len);
+    llvm::Type *i8_ty = builder.getInt8Ty();
+    llvm::Type *i32_ty = builder.getInt32Ty();
+    Type *t;
+    for(t = var->ty; t->base; t = t->base) {
+        if(t->kind == TY_PTR) {
+            i8_ty = llvm::PointerType::getUnqual(i8_ty);
+            i32_ty = llvm::PointerType::getUnqual(i32_ty);
+        } else {
+            i8_ty = llvm::ArrayType::get(i8_ty, t->array_len);
+            i32_ty = llvm::ArrayType::get(i32_ty, t->array_len);
+        }
     }
-    return type;
+
+    if(t->kind == TY_CHAR)
+        return i8_ty;
+    else
+        return i32_ty;
 }
 
 static void emit_data(Obj *prog) {
@@ -226,7 +251,10 @@ static void emit_text(Obj *prog) {
         builder.SetInsertPoint(llvm::BasicBlock::Create(context, "", curFunc));
 
         retBlock = llvm::BasicBlock::Create(context, "", curFunc);
-        retValue = builder.CreateAlloca(builder.getInt32Ty());
+
+        ret = (Node*) calloc(1, sizeof(Node));
+        ret->ty = ty_int;
+        ret->lv = builder.CreateAlloca(builder.getInt32Ty());
 
         for(Obj *var = fn->locals; var; var = var->next)
             var->lv = builder.CreateAlloca(gen_type(var));
@@ -239,8 +267,8 @@ static void emit_text(Obj *prog) {
             builder.CreateBr(retBlock);
     
         builder.SetInsertPoint(retBlock);
-        retValue = builder.CreateLoad(retValue);
-        builder.CreateRet(retValue);
+        ret->lv = builder.CreateLoad(ret->lv);
+        builder.CreateRet(ret->lv);
     }
 }
 
