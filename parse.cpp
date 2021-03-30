@@ -100,9 +100,7 @@ static Obj *new_gvar(char *name, Type *ty) {
 
 static char *new_unique_name(void) {
     static int id = 0;
-    char *buf = (char*) calloc(1, 20);
-    sprintf(buf, "str.%d", id++);
-    return buf;
+    return format("str.%d", id++);
 }
 
 static Obj *new_anon_gvar(Type *ty) {
