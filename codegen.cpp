@@ -220,10 +220,15 @@ static void emit_data(Obj *prog) {
             continue;
 
         llvm::Type *type = gen_type(var);
-        llvm::GlobalVariable *global = new llvm::GlobalVariable(
-            *module, type, false, llvm::GlobalValue::ExternalLinkage,
-            llvm::ConstantAggregateZero::get(type), var->name);
-        global->setAlignment(llvm::MaybeAlign(4));
+        llvm::GlobalVariable *global;
+        if(var->init_data)
+            global = new llvm::GlobalVariable(
+                *module, type, true, llvm::GlobalValue::PrivateLinkage,
+                llvm::ConstantDataArray::getString(context, var->init_data, true), var->name);
+        else 
+            global = new llvm::GlobalVariable(
+                *module, type, false, llvm::GlobalValue::ExternalLinkage,
+                llvm::ConstantAggregateZero::get(type), var->name);
 
         var->lv = global;
     }
