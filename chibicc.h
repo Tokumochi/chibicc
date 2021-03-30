@@ -18,7 +18,7 @@ typedef struct Node Node;
 // string.c
 //
 
-char *format(char *fmt, ...);
+char *format(const char *fmt, ...);
 
 //
 // tokenize.c
