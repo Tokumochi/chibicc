@@ -7,6 +7,7 @@ chibicc: $(SRCS)
 
 test: chibicc
 	sh ./test.sh
+	sh ./test-driver.sh
 
 clean:
 	rm -f chibicc *.o *~ tmp*

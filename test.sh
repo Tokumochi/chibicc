@@ -3,7 +3,7 @@ assert() {
     expected="$1"
     input="$2"
 
-    echo "$input" | ./chibicc - > tmp.ll || exit
+    echo "$input" | ./chibicc -o tmp.ll - || exit
     lli tmp.ll
     actual="$?"
 

@@ -286,11 +286,17 @@ static void emit_text(Obj *prog) {
     }
 }
 
-void codegen(Obj *prog) {
+void codegen(Obj *prog, char *path) {
     module = std::make_unique<llvm::Module>("top", context);
 
     emit_data(prog);
     emit_text(prog);
 
-    module->print(llvm::outs(), nullptr);
+    if(!path || strcmp(path, "-") == 0)
+        module->print(llvm::outs(), nullptr);
+    else {
+        std::error_code EC;
+        llvm::raw_fd_ostream os(path, EC, llvm::sys::fs::OpenFlags::F_None);
+        module->print(os, nullptr);
+    }
 }
