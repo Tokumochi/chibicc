@@ -9,6 +9,8 @@ static llvm::BasicBlock *retBlock;
 
 static Node *ret;
 
+static bool gen_stmt(Node *node);
+
 static void type_conversion(Node *node, Type *to) {
     if(node->ty->kind == TY_CHAR && to->kind == TY_INT)
         node->lv = builder.CreateSExt(node->lv, builder.getInt32Ty());
@@ -28,29 +30,29 @@ static void store(Node *lhs, Node *rhs) {
     builder.CreateStore(rhs->lv, lhs->lv);
 }
 
-static void gen_expr(Node *node) {
+static bool gen_expr(Node *node) {
     switch(node->kind) {
     case ND_NUM:
         node->lv = builder.CreateAlloca(builder.getInt32Ty());
         builder.CreateStore(builder.getInt32(node->val), node->lv);
         node->lv = builder.CreateLoad(node->lv);
-        return;
+        return false;
     case ND_NEG:
         gen_expr(node->lhs);
         node->lv = builder.CreateNeg(node->lhs->lv);
-        return;
+        return false;
     case ND_VAR:
         load(node, node->var->lv);
-        return;
+        return false;
     case ND_DEREF:
         gen_expr(node->lhs);
         load(node, node->lhs->lv);
-        return;
+        return false;
     case ND_ADDR:
         if(node->lhs->kind != ND_VAR)
             error_tok(node->tok, "not an lvalue");
         node->lv = node->lhs->var->lv;
-        return;
+        return false;
     case ND_ASSIGN:
         switch(node->lhs->kind) {
         case ND_VAR:
@@ -66,13 +68,13 @@ static void gen_expr(Node *node) {
         gen_expr(node->rhs);
         store(node->lhs, node->rhs);
         node->lv = node->rhs->lv;
-        return;
-    case ND_GETP:
-        gen_expr(node->lhs);
-        gen_expr(node->rhs);
-        node->lv = builder.CreateSExt(node->rhs->lv, builder.getInt64Ty());
-        node->lv = builder.CreateInBoundsGEP(node->lhs->lv, {builder.getInt64(0), node->lv});
-        return;
+        return false;
+    case ND_STMT_EXPR:
+        for(Node *n = node->body; n; n = n->next) {
+            if(gen_stmt(n)) return true;
+            node->lv = n->lv;
+        }
+        return false;
     case ND_FUNCALL: {
         std::vector<llvm::Value*> args;
         Obj *var = node->func->params;
@@ -84,26 +86,26 @@ static void gen_expr(Node *node) {
         }
 
         node->lv = builder.CreateCall(node->func->lf, args);
-        return;    
+        return false;    
     }      
     }
 
-    gen_expr(node->lhs);
-    gen_expr(node->rhs);
+    if(gen_expr(node->lhs)) return true;
+    if(gen_expr(node->rhs)) return true;
 
     switch(node->kind) {
     case ND_ADD:
         node->lv = builder.CreateAdd(node->lhs->lv, node->rhs->lv);
-        return;
+        return false;
     case ND_SUB:
         node->lv = builder.CreateSub(node->lhs->lv, node->rhs->lv);
-        return;
+        return false;
     case ND_MUL:
         node->lv = builder.CreateMul(node->lhs->lv, node->rhs->lv);
-        return;
+        return false;
     case ND_DIV:
         node->lv = builder.CreateSDiv(node->lhs->lv, node->rhs->lv);
-        return;
+        return false;
     case ND_EQ:
     case ND_NE:
     case ND_LT:
@@ -118,7 +120,11 @@ static void gen_expr(Node *node) {
             node->lv = builder.CreateICmpSLE(node->lhs->lv, node->rhs->lv);
 
         node->lv = builder.CreateZExt(node->lv, builder.getInt32Ty());
-        return;
+        return false;
+    case ND_GETP:
+        node->lv = builder.CreateSExt(node->rhs->lv, builder.getInt64Ty());
+        node->lv = builder.CreateInBoundsGEP(node->lhs->lv, {builder.getInt64(0), node->lv});
+        return false;
     }
 
     error_tok(node->tok, "invalid expression");
@@ -178,16 +184,19 @@ static bool gen_stmt(Node *node) {
         return false;
     }
     case ND_BLOCK:
-        for(Node *n = node->body; n; n = n->next)
+        for(Node *n = node->body; n; n = n->next) {
             if(gen_stmt(n)) return true;
+            node->lv = n->lv;
+        }
         return false;
     case ND_RETURN:
-        gen_expr(node->lhs);
+        if(gen_expr(node->lhs)) return true;
         store(ret, node->lhs);
         builder.CreateBr(retBlock);
         return true;
     case ND_EXPR_STMT:
-        gen_expr(node->lhs);
+        if(gen_expr(node->lhs)) return true;
+        node->lv = node->lhs->lv;
         return false;
     }
 
