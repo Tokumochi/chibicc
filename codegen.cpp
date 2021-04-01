@@ -9,6 +9,7 @@ static llvm::BasicBlock *retBlock;
 
 static Node *ret;
 
+static bool gen_expr(Node *node);
 static bool gen_stmt(Node *node);
 
 static void type_conversion(Node *node, Type *to) {
@@ -28,6 +29,25 @@ static void load(Node *node, llvm::Value *lv) {
 static void store(Node *lhs, Node *rhs) {
     type_conversion(rhs, lhs->ty);
     builder.CreateStore(rhs->lv, lhs->lv);
+}
+
+static void gen_addr(Node *node) {
+    switch(node->kind) {
+    case ND_VAR:
+        node->lv = node->var->lv;
+        return;
+    case ND_DEREF:
+        gen_expr(node->lhs);
+        node->lv = node->lhs->lv;
+        return;
+    case ND_COMMA:
+        gen_expr(node->lhs);
+        gen_addr(node->rhs);
+        node->lv = node->rhs->lv;
+        return;
+    default:
+        error_tok(node->lhs->tok, "not an lvalue");
+    }
 }
 
 static bool gen_expr(Node *node) {
@@ -54,17 +74,7 @@ static bool gen_expr(Node *node) {
         node->lv = node->lhs->var->lv;
         return false;
     case ND_ASSIGN:
-        switch(node->lhs->kind) {
-        case ND_VAR:
-            node->lhs->lv = node->lhs->var->lv;
-            break;
-        case ND_DEREF:
-            gen_expr(node->lhs->lhs);
-            node->lhs->lv = node->lhs->lhs->lv;
-            break;     
-        default:
-            error_tok(node->lhs->tok, "not an lvalue");
-        }
+        gen_addr(node->lhs);
         gen_expr(node->rhs);
         store(node->lhs, node->rhs);
         node->lv = node->rhs->lv;
@@ -74,6 +84,11 @@ static bool gen_expr(Node *node) {
             if(gen_stmt(n)) return true;
             node->lv = n->lv;
         }
+        return false;
+    case ND_COMMA:
+        gen_expr(node->lhs);
+        gen_expr(node->rhs);
+        node->lv = node->rhs->lv;
         return false;
     case ND_FUNCALL: {
         std::vector<llvm::Value*> args;
