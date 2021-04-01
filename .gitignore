@@ -2,6 +2,7 @@
 **/\#*
 **/*.o
 **/*.ll
+**/*.dSYM
 **/a.out
 /tmp*
 /chibicc
