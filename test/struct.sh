@@ -43,4 +43,9 @@ assert 2 'int main() { struct {char a; char b;} x; return sizeof(x); }'
 assert 9 'int main() { struct {char a; int b;} x; return sizeof(x); }'
 assert 0 'int main() { struct {} x; return sizeof(x); }'
 
+assert 16 'int main() { struct t {int a; int b;} x; struct t y; return sizeof(y); }'
+assert 16 'int main() { struct t {int a; int b;}; struct t y; return sizeof(y); }'
+assert 2 'int main() { struct t {char a[2];}; { struct t {char a[4];}; } struct t y; return sizeof(y); }'
+assert 3 'int main() { struct t {int x;}; int t=1; struct t y; y.x=2; return t+y.x; }'
+
 echo OK
