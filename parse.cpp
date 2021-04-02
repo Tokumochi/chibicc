@@ -593,6 +593,8 @@ static Type *struct_decl(Token **rest, Token *tok) {
     // Construct a struct object.
     Type *ty = (Type*) calloc(1, sizeof(Type));
     ty->kind = TY_STRUCT;
+    if(tag)
+        ty->decl_name = strndup(tag->loc, tag->len);
     struct_members(rest, tok->next, ty);
 
     // Assign offsets within the struct to members.
@@ -625,7 +627,7 @@ static Node *struct_ref(Node *lhs, Token *tok) {
     return node;
 }
 
-// postfix = primary ("[" expr "]" | "." ident)*
+// postfix = primary ("[" expr "]" | "." ident | "->" ident)*
 static Node *postfix(Token **rest, Token *tok) {
     Node *node = primary(&tok, tok);
 
@@ -647,6 +649,14 @@ static Node *postfix(Token **rest, Token *tok) {
         }
 
         if(equal(tok, ".")) {
+            node = struct_ref(node, tok->next);
+            tok = tok->next->next;
+            continue;
+        }
+
+        if(equal(tok, "->")) {
+            // x->y is short for (*x).y
+            node = new_unary(ND_DEREF, node, tok);
             node = struct_ref(node, tok->next);
             tok = tok->next->next;
             continue;
