@@ -177,6 +177,9 @@ struct Type {
 
     // Struct
     Member *members;
+    Type *next_struct;
+    char *decl_name;
+    llvm::Type *lt;
 
     // Function type
     Type *return_ty;

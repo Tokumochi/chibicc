@@ -12,6 +12,8 @@ static Node *ret;
 static bool gen_expr(Node *node);
 static bool gen_stmt(Node *node);
 
+static llvm::Type *gen_type(Type *ty, char *name);
+
 static void type_conversion(Node *node, Type *to) {
     if(node->ty->kind == TY_CHAR && to->kind == TY_INT)
         node->lv = builder.CreateSExt(node->lv, builder.getInt32Ty());
@@ -233,14 +235,29 @@ static bool gen_stmt(Node *node) {
     error_tok(node->tok, "invalid statement");
 }
 
-static llvm::Type *gen_type(Type *ty, char *name = nullptr) {
-    if(ty->kind == TY_STRUCT) {
-        std::vector<llvm::Type*> mems;
-        for(Member *mem = ty->members; mem; mem = mem->next)
-            mems.push_back(gen_type(mem->ty, strndup(mem->name->loc, mem->name->len)));
+static llvm::Type *gen_struct_type(Type *ty, char *name) {
+    static Type *struct_type;
 
-        return llvm::StructType::create(context, mems, format("struct.%s", name));
-    }
+    for(Type *t = struct_type; t; t = t->next_struct)
+        if(ty->members == t->members)
+            return t->lt;
+    
+    std::vector<llvm::Type*> mems;
+    for(Member *mem = ty->members; mem; mem = mem->next)
+        mems.push_back(gen_type(mem->ty, strndup(mem->name->loc, mem->name->len)));
+
+    char *decl_name = ty->decl_name;
+    if(!decl_name)
+        decl_name = name;
+    
+    ty->next_struct = struct_type;
+    struct_type = ty;
+    return ty->lt = llvm::StructType::create(context, mems, format("struct.%s", decl_name));
+}
+
+static llvm::Type *gen_type(Type *ty, char *name) {
+    if(ty->kind == TY_STRUCT)
+        return gen_struct_type(ty, name);
 
     if(ty->kind == TY_PTR)
         return llvm::PointerType::getUnqual(gen_type(ty->base, name));
