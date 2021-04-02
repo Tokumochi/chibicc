@@ -45,6 +45,10 @@ static void gen_addr(Node *node) {
         gen_addr(node->rhs);
         node->lv = node->rhs->lv;
         return;
+    case ND_MEMBER:
+        gen_addr(node->lhs);
+        node->lv = builder.CreateInBoundsGEP(node->lhs->lv, {builder.getInt32(0), builder.getInt32(node->member->offset)});
+        return;
     default:
         error_tok(node->lhs->tok, "not an lvalue");
     }
@@ -64,15 +68,26 @@ static bool gen_expr(Node *node) {
     case ND_VAR:
         load(node, node->var->lv);
         return false;
+    case ND_MEMBER:
+        gen_addr(node);
+        load(node, node->lv);
+        return false;
     case ND_DEREF:
         gen_expr(node->lhs);
         load(node, node->lhs->lv);
         return false;
     case ND_ADDR:
-        if(node->lhs->kind != ND_VAR)
+        switch(node->lhs->kind) {
+        case ND_VAR:
+            node->lv = node->lhs->var->lv;
+            return false;
+        case ND_MEMBER:
+            gen_addr(node->lhs);
+            node->lv = node->lhs->lv;
+            return false;
+        default:
             error_tok(node->tok, "not an lvalue");
-        node->lv = node->lhs->var->lv;
-        return false;
+        }
     case ND_ASSIGN:
         gen_addr(node->lhs);
         gen_expr(node->rhs);
@@ -218,24 +233,25 @@ static bool gen_stmt(Node *node) {
     error_tok(node->tok, "invalid statement");
 }
 
-static llvm::Type *gen_type(Obj *var) {
-    llvm::Type *i8_ty = builder.getInt8Ty();
-    llvm::Type *i32_ty = builder.getInt32Ty();
-    Type *t;
-    for(t = var->ty; t->base; t = t->base) {
-        if(t->kind == TY_PTR) {
-            i8_ty = llvm::PointerType::getUnqual(i8_ty);
-            i32_ty = llvm::PointerType::getUnqual(i32_ty);
-        } else {
-            i8_ty = llvm::ArrayType::get(i8_ty, t->array_len);
-            i32_ty = llvm::ArrayType::get(i32_ty, t->array_len);
-        }
+static llvm::Type *gen_type(Type *ty, char *name = nullptr) {
+    if(ty->kind == TY_STRUCT) {
+        std::vector<llvm::Type*> mems;
+        for(Member *mem = ty->members; mem; mem = mem->next)
+            mems.push_back(gen_type(mem->ty, strndup(mem->name->loc, mem->name->len)));
+
+        return llvm::StructType::create(context, mems, format("struct.%s", name));
     }
 
-    if(t->kind == TY_CHAR)
-        return i8_ty;
-    else
-        return i32_ty;
+    if(ty->kind == TY_PTR)
+        return llvm::PointerType::getUnqual(gen_type(ty->base, name));
+    
+    if(ty->kind == TY_ARRAY)
+        return llvm::ArrayType::get(gen_type(ty->base, name), ty->array_len);
+
+    if(ty->kind == TY_CHAR)
+        return builder.getInt8Ty();
+
+    return builder.getInt32Ty();
 }
 
 static void emit_data(Obj *prog) {
@@ -243,7 +259,7 @@ static void emit_data(Obj *prog) {
         if(var->is_function)
             continue;
 
-        llvm::Type *type = gen_type(var);
+        llvm::Type *type = gen_type(var->ty, var->name);
         llvm::GlobalVariable *global;
         if(var->init_data)
             global = new llvm::GlobalVariable(
@@ -265,7 +281,7 @@ static void emit_text(Obj *prog) {
 
         std::vector<llvm::Type*> args;
         for(Obj *var = fn->params; var; var = var->next)
-            args.push_back(gen_type(var));
+            args.push_back(gen_type(var->ty, var->name));
 
         fn->lf = llvm::Function::Create(
             llvm::FunctionType::get(llvm::Type::getInt32Ty(context), args, false),
@@ -286,7 +302,7 @@ static void emit_text(Obj *prog) {
         ret->lv = builder.CreateAlloca(builder.getInt32Ty());
 
         for(Obj *var = fn->locals; var; var = var->next)
-            var->lv = builder.CreateAlloca(gen_type(var));
+            var->lv = builder.CreateAlloca(gen_type(var->ty, var->name));
 
         int i = 0;
         for(Obj *var = fn->params; var; var = var->next)

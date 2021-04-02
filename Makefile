@@ -13,6 +13,7 @@ test: chibicc
 	sh test/pointer.sh
 	sh test/function.sh
 	sh test/string.sh
+	sh test/struct.sh
 	sh test/driver.sh
 
 clean:
