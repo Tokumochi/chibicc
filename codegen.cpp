@@ -49,7 +49,10 @@ static void gen_addr(Node *node) {
         return;
     case ND_MEMBER:
         gen_addr(node->lhs);
-        node->lv = builder.CreateInBoundsGEP(node->lhs->lv, {builder.getInt32(0), builder.getInt32(node->member->offset)});
+        if(node->lhs->ty->kind == TY_STRUCT)
+            node->lv = builder.CreateInBoundsGEP(node->lhs->lv, {builder.getInt32(0), builder.getInt32(node->member->offset)});
+        else
+            node->lv = builder.CreateBitCast(node->lhs->lv, gen_type(pointer_to(node->member->ty), nullptr));
         return;
     default:
         error_tok(node->lhs->tok, "not an lvalue");
@@ -243,20 +246,34 @@ static llvm::Type *gen_struct_type(Type *ty, char *name) {
             return t->lt;
     
     std::vector<llvm::Type*> mems;
-    for(Member *mem = ty->members; mem; mem = mem->next)
-        mems.push_back(gen_type(mem->ty, strndup(mem->name->loc, mem->name->len)));
 
     char *decl_name = ty->decl_name;
     if(!decl_name)
         decl_name = name;
+
+    if(ty->kind == TY_STRUCT) {
+        decl_name = format("struct.%s", decl_name);
+        for(Member *mem = ty->members; mem; mem = mem->next)
+            mems.push_back(gen_type(mem->ty, strndup(mem->name->loc, mem->name->len)));
+    } else {
+        decl_name = format("union.%s", decl_name);
+        int size = 0;
+        Member *mmem;
+        for(Member *mem = ty->members; mem; mem = mem->next)
+            if(size < mem->ty->size) {
+                size = mem->ty->size;
+                mmem = mem;
+            }
+        mems.push_back(gen_type(mmem->ty, strndup(mmem->name->loc, mmem->name->len)));
+    }
     
     ty->next_struct = struct_type;
     struct_type = ty;
-    return ty->lt = llvm::StructType::create(context, mems, format("struct.%s", decl_name));
+    return ty->lt = llvm::StructType::create(context, mems, decl_name);
 }
 
 static llvm::Type *gen_type(Type *ty, char *name) {
-    if(ty->kind == TY_STRUCT)
+    if(ty->kind == TY_STRUCT || ty->kind == TY_UNION)
         return gen_struct_type(ty, name);
 
     if(ty->kind == TY_PTR)
