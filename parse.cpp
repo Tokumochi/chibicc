@@ -621,8 +621,6 @@ static Type *struct_decl(Token **rest, Token *tok) {
         ty->size += mem->ty->size;
     }
 
-    fprintf(stderr, "%d", ty->size);
-
     return ty;
 }
 

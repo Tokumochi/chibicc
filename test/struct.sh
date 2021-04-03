@@ -51,4 +51,9 @@ assert 3 'int main() { struct t {int x;}; int t=1; struct t y; y.x=2; return t+y
 assert 3 'int main() { struct t {char a;} x; struct t *y = &x; x.a=3; return y->a; }'
 assert 3 'int main() { struct t {char a;} x; struct t *y = &x; y->a=3; return x.a; }'
 
+assert 3 'int main() { struct {int a,b;} x,y; x.a=3; y=x; return y.a; }'
+assert 7 'int main() { struct t {int a,b;}; struct t x; x.a=7; struct t y; struct t *z=&y; *z=x; return y.a; }'
+assert 7 'int main() { struct t {int a,b;}; struct t x; x.a=7; struct t y, *p=&x, *q=&y; *q=*p; return y.a; }'
+assert 5 'int main() { struct t {char a,b;} x, y; x.a=5; y=x; return y.a; }'
+
 echo OK
