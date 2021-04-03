@@ -1,7 +1,7 @@
 #include "chibicc.h"
 
 static Type base_char = (Type){TY_CHAR, 1};
-static Type base_int = (Type){TY_INT, 8};
+static Type base_int = (Type){TY_INT, 4};
 
 Type *ty_char = &base_char;
 Type *ty_int = &base_int;

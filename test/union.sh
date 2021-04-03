@@ -15,7 +15,7 @@ assert() {
     fi
 }
 
-assert 8 'int main() { union { int a; char b[6]; } x; return sizeof(x); }'
+assert 6 'int main() { union { int a; char b[6]; } x; return sizeof(x); }'
 assert 3 'int main() { union { int a; char b[4]; } x; x.a = 515; return x.b[0]; }'
 assert 2 'int main() { union { int a; char b[4]; } x; x.a = 515; return x.b[1]; }'
 assert 0 'int main() { union { int a; char b[4]; } x; x.a = 515; return x.b[2]; }'
