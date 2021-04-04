@@ -2,12 +2,15 @@
 
 static Type base_char = (Type){TY_CHAR, 1};
 static Type base_int = (Type){TY_INT, 4};
+static Type base_long = (Type){TY_LONG, 8};
 
 Type *ty_char = &base_char;
-Type *ty_int = &base_int;
+Type *ty_int  = &base_int;
+Type *ty_long = &base_long;
 
 bool is_integer(Type *ty) {
-    return ty->kind == TY_CHAR || ty->kind == TY_INT;
+    TypeKind k = ty->kind;
+    return k == TY_CHAR || k == TY_INT || k == TY_LONG;
 }
 
 Type *copy_type(Type *ty) {
@@ -76,7 +79,7 @@ void add_type(Node *node) {
     case ND_LE:
     case ND_NUM:
     case ND_FUNCALL:
-        node->ty = ty_int;
+        node->ty = ty_long;
         return;
     case ND_VAR:
         node->ty = node->var->ty;

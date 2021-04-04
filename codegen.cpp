@@ -15,10 +15,39 @@ static bool gen_stmt(Node *node);
 static llvm::Type *gen_type(Type *ty, char *name);
 
 static void type_conversion(Node *node, Type *to) {
-    if(node->ty->kind == TY_CHAR && to->kind == TY_INT)
-        node->lv = builder.CreateSExt(node->lv, builder.getInt32Ty());
-    else if(node->ty->kind == TY_INT && to->kind == TY_CHAR)
-        node->lv = builder.CreateTrunc(node->lv, builder.getInt8Ty());
+    switch(node->ty->kind) {
+    case TY_CHAR:
+        switch(to->kind) {
+        case TY_INT:
+            node->lv = builder.CreateSExt(node->lv, builder.getInt32Ty());
+            return;
+        case TY_LONG:
+            node->lv = builder.CreateSExt(node->lv, builder.getInt64Ty());
+            return;
+        }
+    case TY_INT:
+        if(to->kind == TY_LONG) {
+            node->lv = builder.CreateSExt(node->lv, builder.getInt64Ty());
+            return;
+        }
+    }
+
+    switch(node->ty->kind) {
+    case TY_LONG:
+        switch(to->kind) {
+        case TY_INT:
+            node->lv = builder.CreateTrunc(node->lv, builder.getInt32Ty());
+            return;
+        case TY_CHAR:
+            node->lv = builder.CreateTrunc(node->lv, builder.getInt8Ty());
+            return;
+        }
+    case TY_INT:
+        if(to->kind == TY_CHAR) {
+            node->lv = builder.CreateTrunc(node->lv, builder.getInt8Ty());
+            return;
+        }
+    }
 }
 
 static void load(Node *node, llvm::Value *lv) {
@@ -62,8 +91,8 @@ static void gen_addr(Node *node) {
 static bool gen_expr(Node *node) {
     switch(node->kind) {
     case ND_NUM:
-        node->lv = builder.CreateAlloca(builder.getInt32Ty());
-        builder.CreateStore(builder.getInt32(node->val), node->lv);
+        node->lv = builder.CreateAlloca(builder.getInt64Ty());
+        builder.CreateStore(builder.getInt64(node->val), node->lv);
         node->lv = builder.CreateLoad(node->lv);
         return false;
     case ND_NEG:
@@ -128,6 +157,8 @@ static bool gen_expr(Node *node) {
     if(gen_expr(node->lhs)) return true;
     if(gen_expr(node->rhs)) return true;
 
+    type_conversion(node->rhs, node->lhs->ty);
+
     switch(node->kind) {
     case ND_ADD:
         node->lv = builder.CreateAdd(node->lhs->lv, node->rhs->lv);
@@ -154,7 +185,7 @@ static bool gen_expr(Node *node) {
         else if(node->kind == ND_LE)
             node->lv = builder.CreateICmpSLE(node->lhs->lv, node->rhs->lv);
 
-        node->lv = builder.CreateZExt(node->lv, builder.getInt32Ty());
+        node->lv = builder.CreateZExt(node->lv, builder.getInt64Ty());
         return false;
     case ND_GETP:
         node->lv = builder.CreateSExt(node->rhs->lv, builder.getInt64Ty());
@@ -174,7 +205,8 @@ static bool gen_stmt(Node *node) {
         thenBlock = llvm::BasicBlock::Create(context, "", curFunc);
         endBlock = llvm::BasicBlock::Create(context, "", curFunc);
         gen_expr(node->cond);
-        node->lv = builder.CreateICmpEQ(builder.getInt32(0), node->cond->lv);
+        type_conversion(node->cond, ty_long);
+        node->lv = builder.CreateICmpEQ(builder.getInt64(0), node->cond->lv);
         if(node->els) {
             elseBlock = llvm::BasicBlock::Create(context, "", curFunc);
             builder.CreateCondBr(node->lv, elseBlock, thenBlock);
@@ -202,7 +234,8 @@ static bool gen_stmt(Node *node) {
             builder.CreateBr(beginBlock);
             builder.SetInsertPoint(beginBlock);
             gen_expr(node->cond);
-            node->lv = builder.CreateICmpEQ(builder.getInt32(0), node->cond->lv);
+            type_conversion(node->cond, ty_long);
+            node->lv = builder.CreateICmpEQ(builder.getInt64(0), node->cond->lv);
             builder.CreateCondBr(node->lv, endBlock, thenBlock);
         } else
             builder.CreateBr(thenBlock);
@@ -284,8 +317,11 @@ static llvm::Type *gen_type(Type *ty, char *name) {
 
     if(ty->kind == TY_CHAR)
         return builder.getInt8Ty();
-
-    return builder.getInt32Ty();
+    
+    if(ty->kind == TY_INT)
+        return builder.getInt32Ty();
+    
+    return builder.getInt64Ty();
 }
 
 static void emit_data(Obj *prog) {
