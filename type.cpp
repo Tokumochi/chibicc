@@ -1,16 +1,19 @@
 #include "chibicc.h"
 
-static Type base_char = (Type){TY_CHAR, 1};
-static Type base_int = (Type){TY_INT, 4};
-static Type base_long = (Type){TY_LONG, 8};
+static Type base_char  = (Type){TY_CHAR, 1};
+static Type base_short = (Type){TY_SHORT, 2};
+static Type base_int   = (Type){TY_INT, 4};
+static Type base_long  = (Type){TY_LONG, 8};
 
-Type *ty_char = &base_char;
-Type *ty_int  = &base_int;
-Type *ty_long = &base_long;
+Type *ty_char  = &base_char;
+Type *ty_short = &base_short;
+Type *ty_int   = &base_int;
+Type *ty_long  = &base_long;
 
 bool is_integer(Type *ty) {
     TypeKind k = ty->kind;
-    return k == TY_CHAR || k == TY_INT || k == TY_LONG;
+    return k == TY_CHAR || k == TY_SHORT || k == TY_INT ||
+           k == TY_LONG;
 }
 
 Type *copy_type(Type *ty) {
@@ -114,5 +117,6 @@ void add_type(Node *node) {
         }
         error_tok(node->tok, "statement expression returning void is not supported");
         return;
+    default: ;
     }
 }

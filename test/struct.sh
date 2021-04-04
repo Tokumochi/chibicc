@@ -57,5 +57,6 @@ assert 7 'int main() { struct t {int a,b;}; struct t x; x.a=7; struct t y, *p=&x
 assert 5 'int main() { struct t {char a,b;} x, y; x.a=5; y=x; return y.a; }'
 
 assert 9 'int main() { struct {char a; long b;} x; return sizeof(x); }'
+assert 3 'int main() { struct {char a; short b;} x; return sizeof(x); }'
 
 echo OK

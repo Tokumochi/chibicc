@@ -26,5 +26,6 @@ assert 55 'int fib(int x) { if (x<=1) return 1; return fib(x-1) + fib(x-2); } in
 assert 1 'int sub_char(char a, char b, char c) { return a-b-c; } int main() { return sub_char(7, 3, 3); }'
 
 assert 1 'int sub_long(long a, long b, long c) { return a-b-c; } int main() { return sub_long(7, 3, 3); }'
+assert 1 'int sub_short(short a, short b, short c) { return a-b-c; } int main() { return sub_short(7, 3, 3); }'
 
 echo OK

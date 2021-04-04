@@ -18,18 +18,33 @@ static void type_conversion(Node *node, Type *to) {
     switch(node->ty->kind) {
     case TY_CHAR:
         switch(to->kind) {
+        case TY_SHORT:
+            node->lv = builder.CreateSExt(node->lv, builder.getInt16Ty());
+            return;
         case TY_INT:
             node->lv = builder.CreateSExt(node->lv, builder.getInt32Ty());
             return;
         case TY_LONG:
             node->lv = builder.CreateSExt(node->lv, builder.getInt64Ty());
             return;
+        default: ;
+        }
+    case TY_SHORT:
+        switch(to->kind) {
+        case TY_INT:
+            node->lv = builder.CreateSExt(node->lv, builder.getInt32Ty());
+            return;
+        case TY_LONG:
+            node->lv = builder.CreateSExt(node->lv, builder.getInt64Ty());
+            return;
+        default: ;
         }
     case TY_INT:
         if(to->kind == TY_LONG) {
             node->lv = builder.CreateSExt(node->lv, builder.getInt64Ty());
             return;
         }
+    default: ;
     }
 
     switch(node->ty->kind) {
@@ -38,15 +53,30 @@ static void type_conversion(Node *node, Type *to) {
         case TY_INT:
             node->lv = builder.CreateTrunc(node->lv, builder.getInt32Ty());
             return;
+        case TY_SHORT:
+            node->lv = builder.CreateTrunc(node->lv, builder.getInt16Ty());
+            return;
         case TY_CHAR:
             node->lv = builder.CreateTrunc(node->lv, builder.getInt8Ty());
             return;
+        default: ;
         }
     case TY_INT:
+        switch(to->kind) {
+        case TY_SHORT:
+            node->lv = builder.CreateTrunc(node->lv, builder.getInt16Ty());
+            return;
+        case TY_CHAR:
+            node->lv = builder.CreateTrunc(node->lv, builder.getInt8Ty());
+            return;
+        default: ;
+        }
+    case TY_SHORT:
         if(to->kind == TY_CHAR) {
             node->lv = builder.CreateTrunc(node->lv, builder.getInt8Ty());
             return;
         }
+    default: ;
     }
 }
 
@@ -151,7 +181,8 @@ static bool gen_expr(Node *node) {
 
         node->lv = builder.CreateCall(node->func->lf, args);
         return false;    
-    }      
+    }
+    default: ;
     }
 
     if(gen_expr(node->lhs)) return true;
@@ -191,6 +222,7 @@ static bool gen_expr(Node *node) {
         node->lv = builder.CreateSExt(node->rhs->lv, builder.getInt64Ty());
         node->lv = builder.CreateInBoundsGEP(node->lhs->lv, {builder.getInt64(0), node->lv});
         return false;
+    default: ;
     }
 
     error_tok(node->tok, "invalid expression");
@@ -266,6 +298,7 @@ static bool gen_stmt(Node *node) {
         if(gen_expr(node->lhs)) return true;
         node->lv = node->lhs->lv;
         return false;
+    default: ;
     }
 
     error_tok(node->tok, "invalid statement");
@@ -317,6 +350,9 @@ static llvm::Type *gen_type(Type *ty, char *name) {
 
     if(ty->kind == TY_CHAR)
         return builder.getInt8Ty();
+
+    if(ty->kind == TY_SHORT)
+        return builder.getInt16Ty();
     
     if(ty->kind == TY_INT)
         return builder.getInt32Ty();
