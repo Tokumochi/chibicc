@@ -1,9 +1,13 @@
 #include "chibicc.h"
 
+static Type base_void = (Type){TY_VOID, 1};
+
 static Type base_char  = (Type){TY_CHAR, 1};
 static Type base_short = (Type){TY_SHORT, 2};
 static Type base_int   = (Type){TY_INT, 4};
 static Type base_long  = (Type){TY_LONG, 8};
+
+Type *ty_void  = &base_void;
 
 Type *ty_char  = &base_char;
 Type *ty_short = &base_short;
@@ -108,6 +112,9 @@ void add_type(Node *node) {
     case ND_DEREF:
         if(!node->lhs->ty->base)
             error_tok(node->tok, "invalid pointer dereference");
+        if(node->lhs->ty->base->kind == TY_VOID)
+            error_tok(node->tok, "dereferencing a void pointer");
+
         node->ty = node->lhs->ty->base;
         return;
     case ND_STMT_EXPR:
