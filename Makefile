@@ -15,6 +15,7 @@ test: chibicc
 	sh test/string.sh
 	sh test/struct.sh
 	sh test/union.sh
+	sh test/decl.sh
 	sh test/driver.sh
 
 clean:

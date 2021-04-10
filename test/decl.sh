@@ -22,4 +22,6 @@ assert 4 'int main() { int x; return sizeof(x); }'
 assert 8 'int main() { long int x; return sizeof(x); }'
 assert 8 'int main() { int long x; return sizeof(x); }'
 
+assert 8 'int main() { long long x; return sizeof(x); }'
+
 echo OK
