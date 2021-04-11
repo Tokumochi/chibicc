@@ -17,6 +17,7 @@ test: chibicc
 	sh test/union.sh
 	sh test/decl.sh
 	sh test/driver.sh
+	sh test/typedef.sh
 
 clean:
 	rm -rf chibicc tmp* $(TESTS) test/*.ll test/*.exe
